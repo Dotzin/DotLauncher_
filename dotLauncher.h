@@ -1,11 +1,11 @@
-#ifndef MAINWINDOW_H
-#define MAINWINDOW_H
+#ifndef DOTLAUNCHER_H
+#define DOTLAUNCHER_H
 
 #include <QMainWindow>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
-class MainWindow;
+class dotLauncher;
 }
 QT_END_NAMESPACE
 
@@ -18,6 +18,6 @@ public:
     ~MainWindow() override;
 
 private:
-    Ui::MainWindow *ui;
+    Ui::dotLauncher *ui;
 };
-#endif // MAINWINDOW_H
+#endif // DOTLAUNCHER_H

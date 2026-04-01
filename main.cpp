@@ -1,4 +1,4 @@
-#include "mainwindow.h"
+#include "dotLauncher.h"
 
 #include <QApplication>
 #include <QLocale>
