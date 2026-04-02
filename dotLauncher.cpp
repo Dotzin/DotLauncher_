@@ -47,6 +47,8 @@ constexpr int kMaxCardWidth = 220;
 constexpr int kCardWidthStep = 5;
 constexpr int kCardWidthPageStep = 10;
 constexpr int kCardWidthTickInterval = 20;
+const QString kFilterAllKey = QStringLiteral("__all__");
+const QString kFilterUncategorizedKey = QStringLiteral("__uncategorized__");
 } // namespace
 
 MainWindow::MainWindow(QWidget *parent)
