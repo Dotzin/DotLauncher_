@@ -214,14 +214,209 @@ void MainWindow::openAddSoftwareDialog()
     }
 }
 
+void MainWindow::openManageCategoriesDialog()
+{
+    QList<SoftwareEntry> entries;
+    QStringList categories;
+    QString errorMessage;
+    if (!readSoftwareEntries(&entries, &categories, &errorMessage)) {
+        if (errorMessage.isEmpty()) {
+            errorMessage = tr("Nao foi possivel carregar as categorias.");
+        }
+        QMessageBox::warning(this, tr("Categorias"), errorMessage);
+        return;
+    }
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Gerenciar categorias"));
+
+    auto *layout = new QVBoxLayout(&dialog);
+
+    auto *listWidget = new QListWidget(&dialog);
+    listWidget->addItems(categories);
+    listWidget->setSelectionMode(QAbstractItemView::SingleSelection);
+    layout->addWidget(listWidget);
+
+    auto *actionsRow = new QWidget(&dialog);
+    auto *actionsLayout = new QHBoxLayout(actionsRow);
+    actionsLayout->setContentsMargins(0, 0, 0, 0);
+    actionsLayout->setSpacing(8);
+
+    auto *addButton = new QPushButton(tr("Adicionar"), &dialog);
+    auto *renameButton = new QPushButton(tr("Renomear"), &dialog);
+    auto *removeButton = new QPushButton(tr("Remover"), &dialog);
+
+    actionsLayout->addWidget(addButton);
+    actionsLayout->addWidget(renameButton);
+    actionsLayout->addWidget(removeButton);
+    actionsLayout->addStretch(1);
+    layout->addWidget(actionsRow);
+
+    auto *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    buttonBox->button(QDialogButtonBox::Ok)->setText(tr("Salvar"));
+    buttonBox->button(QDialogButtonBox::Cancel)->setText(tr("Cancelar"));
+    layout->addWidget(buttonBox);
+
+    auto refreshList = [&]() {
+        listWidget->clear();
+        listWidget->addItems(categories);
+    };
+
+    connect(addButton, &QPushButton::clicked, &dialog, [&]() {
+        bool ok = false;
+        const QString name = QInputDialog::getText(
+            &dialog,
+            tr("Nova categoria"),
+            tr("Nome da categoria:"),
+            QLineEdit::Normal,
+            QString(),
+            &ok);
+
+        if (!ok) {
+            return;
+        }
+
+        const QString trimmed = normalizeCategory(name);
+        if (trimmed.isEmpty()) {
+            QMessageBox::warning(&dialog, tr("Categoria invalida"), tr("Digite um nome valido."));
+            return;
+        }
+        if (isReservedCategoryName(trimmed)) {
+            QMessageBox::warning(
+                &dialog,
+                tr("Categoria invalida"),
+                tr("Escolha um nome diferente de \"Todas\" ou \"Sem categoria\"."));
+            return;
+        }
+        if (containsCategory(categories, trimmed, Qt::CaseInsensitive)) {
+            QMessageBox::warning(&dialog, tr("Categoria duplicada"), tr("Essa categoria ja existe."));
+            return;
+        }
+
+        categories.append(trimmed);
+        refreshList();
+        listWidget->setCurrentRow(listWidget->count() - 1);
+    });
+
+    connect(renameButton, &QPushButton::clicked, &dialog, [&]() {
+        QListWidgetItem *currentItem = listWidget->currentItem();
+        if (!currentItem) {
+            QMessageBox::warning(&dialog, tr("Selecione"), tr("Escolha uma categoria para renomear."));
+            return;
+        }
+
+        const QString oldName = currentItem->text();
+        bool ok = false;
+        const QString newName = QInputDialog::getText(
+            &dialog,
+            tr("Renomear categoria"),
+            tr("Novo nome:"),
+            QLineEdit::Normal,
+            oldName,
+            &ok);
+
+        if (!ok) {
+            return;
+        }
+
+        const QString trimmed = normalizeCategory(newName);
+        if (trimmed.isEmpty()) {
+            QMessageBox::warning(&dialog, tr("Categoria invalida"), tr("Digite um nome valido."));
+            return;
+        }
+        if (isReservedCategoryName(trimmed)) {
+            QMessageBox::warning(
+                &dialog,
+                tr("Categoria invalida"),
+                tr("Escolha um nome diferente de \"Todas\" ou \"Sem categoria\"."));
+            return;
+        }
+        if (oldName.compare(trimmed, Qt::CaseInsensitive) != 0
+            && containsCategory(categories, trimmed, Qt::CaseInsensitive)) {
+            QMessageBox::warning(&dialog, tr("Categoria duplicada"), tr("Essa categoria ja existe."));
+            return;
+        }
+
+        for (QString &category : categories) {
+            if (category.compare(oldName, Qt::CaseInsensitive) == 0) {
+                category = trimmed;
+                break;
+            }
+        }
+
+        for (SoftwareEntry &entry : entries) {
+            if (entry.category.compare(oldName, Qt::CaseInsensitive) == 0) {
+                entry.category = trimmed;
+            }
+        }
+
+        refreshList();
+        const int row = categories.indexOf(trimmed);
+        if (row >= 0) {
+            listWidget->setCurrentRow(row);
+        }
+    });
+
+    connect(removeButton, &QPushButton::clicked, &dialog, [&]() {
+        QListWidgetItem *currentItem = listWidget->currentItem();
+        if (!currentItem) {
+            QMessageBox::warning(&dialog, tr("Selecione"), tr("Escolha uma categoria para remover."));
+            return;
+        }
+
+        const QString name = currentItem->text();
+        const auto response = QMessageBox::question(
+            &dialog,
+            tr("Remover categoria"),
+            tr("Deseja remover a categoria \"%1\"?").arg(name));
+
+        if (response != QMessageBox::Yes) {
+            return;
+        }
+
+        for (int i = categories.size() - 1; i >= 0; --i) {
+            if (categories.at(i).compare(name, Qt::CaseInsensitive) == 0) {
+                categories.removeAt(i);
+            }
+        }
+
+        for (SoftwareEntry &entry : entries) {
+            if (entry.category.compare(name, Qt::CaseInsensitive) == 0) {
+                entry.category.clear();
+            }
+        }
+
+        refreshList();
+    });
+
+    connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    connect(buttonBox, &QDialogButtonBox::accepted, &dialog, [&]() {
+        QString saveError;
+        if (!writeSoftwareEntries(entries, categories, &saveError)) {
+            if (saveError.isEmpty()) {
+                saveError = tr("Nao foi possivel salvar as categorias.");
+            }
+            QMessageBox::warning(&dialog, tr("Erro ao salvar"), saveError);
+            return;
+        }
+        dialog.accept();
+    });
+
+    if (dialog.exec() == QDialog::Accepted) {
+        loadSoftwareEntries();
+    }
+}
+
 bool MainWindow::saveSoftwareEntry(const QString &name,
                                    const QString &exePath,
                                    const QIcon &icon,
+                                   const QString &category,
                                    QString *errorMessage)
 {
     SoftwareEntry entry;
     entry.name = name;
     entry.exePath = exePath;
+    entry.category = normalizeCategory(category);
 
     if (!saveIconFile(icon, &entry.iconPath, errorMessage)) {
         return false;
