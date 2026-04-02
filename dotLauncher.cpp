@@ -35,7 +35,7 @@
 namespace {
 constexpr int kBaseCardWidth = 140;
 constexpr int kBaseCardHeight = 200;
-constexpr int kBaseIconSize = 120;
+constexpr int kBaseIconSize = 110;
 constexpr int kDefaultColumnCount = 5;
 constexpr int kMinCardWidth = 120;
 constexpr int kMaxCardWidth = 220;
@@ -549,7 +549,10 @@ QFrame *MainWindow::createSoftwareCard(const SoftwareEntry &entry, const QString
     }
 
     auto *titleLabel = new QLabel(entry.name, frame);
-    titleLabel->setAlignment(Qt::AlignCenter);
+    QFont titleFont = titleLabel->font();
+    titleFont.setPointSizeF(titleFont.pointSizeF() + 2.0);
+    titleLabel->setFont(titleFont);
+    titleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
     auto *openButton = new QPushButton(tr("Abrir"), frame);
 
