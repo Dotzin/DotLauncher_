@@ -18,21 +18,38 @@
 #include <QLabel>
 #include <QLayout>
 #include <QLineEdit>
+#include <QMargins>
 #include <QMessageBox>
 #include <QProcess>
 #include <QPixmap>
 #include <QPushButton>
+#include <QSlider>
 #include <QSize>
 #include <QSizePolicy>
 #include <QStandardPaths>
+#include <QtMath>
 #include <QUuid>
 #include <QVBoxLayout>
+
+namespace {
+constexpr int kBaseCardWidth = 140;
+constexpr int kBaseCardHeight = 200;
+constexpr int kBaseIconSize = 120;
+constexpr int kDefaultColumnCount = 5;
+constexpr int kMinCardWidth = 120;
+constexpr int kMaxCardWidth = 220;
+constexpr int kCardWidthStep = 5;
+constexpr int kCardWidthPageStep = 10;
+constexpr int kCardWidthTickInterval = 20;
+} // namespace
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::dotLauncher)
 {
     ui->setupUi(this);
+
+    setupCardSizeControls();
 
     connect(ui->pushButton, &QPushButton::clicked, this, &MainWindow::openAddSoftwareDialog);
 
@@ -386,6 +403,85 @@ bool MainWindow::saveIconFile(const QIcon &icon, QString *relativePath, QString 
     return true;
 }
 
+void MainWindow::setupCardSizeControls()
+{
+    if (!ui || !ui->cardSizeSlider) {
+        m_cardWidth = kBaseCardWidth;
+        return;
+    }
+
+    ui->cardSizeSlider->setMinimum(kMinCardWidth);
+    ui->cardSizeSlider->setMaximum(kMaxCardWidth);
+    ui->cardSizeSlider->setSingleStep(kCardWidthStep);
+    ui->cardSizeSlider->setPageStep(kCardWidthPageStep);
+    ui->cardSizeSlider->setTickPosition(QSlider::TicksBelow);
+    ui->cardSizeSlider->setTickInterval(kCardWidthTickInterval);
+
+    m_cardWidth = ui->cardSizeSlider->value();
+    updateCardSizeLabel(m_cardWidth);
+
+    connect(ui->cardSizeSlider, &QSlider::valueChanged, this, &MainWindow::handleCardSizeChanged);
+}
+
+void MainWindow::handleCardSizeChanged(int value)
+{
+    m_cardWidth = value;
+    updateCardSizeLabel(value);
+    loadSoftwareEntries();
+}
+
+int MainWindow::cardWidth() const
+{
+    return qBound(kMinCardWidth, m_cardWidth, kMaxCardWidth);
+}
+
+int MainWindow::cardHeight() const
+{
+    const double ratio = static_cast<double>(kBaseCardHeight) / static_cast<double>(kBaseCardWidth);
+    return qRound(cardWidth() * ratio);
+}
+
+int MainWindow::iconSize() const
+{
+    const double ratio = static_cast<double>(kBaseIconSize) / static_cast<double>(kBaseCardWidth);
+    return qRound(cardWidth() * ratio);
+}
+
+int MainWindow::calculateColumnCount(int cardWidth) const
+{
+    if (!ui || !ui->scrollArea || !ui->gridLayout) {
+        return kDefaultColumnCount;
+    }
+
+    const int viewportWidth = ui->scrollArea->viewport()->width();
+    if (viewportWidth <= 0) {
+        return kDefaultColumnCount;
+    }
+
+    const QMargins margins = ui->gridLayout->contentsMargins();
+    const int availableWidth = viewportWidth - margins.left() - margins.right();
+    const int spacing = ui->gridLayout->spacing();
+    if (availableWidth <= 0) {
+        return kDefaultColumnCount;
+    }
+
+    const int columnWidth = cardWidth + spacing;
+    if (columnWidth <= 0) {
+        return kDefaultColumnCount;
+    }
+
+    return qMax(1, (availableWidth + spacing) / columnWidth);
+}
+
+void MainWindow::updateCardSizeLabel(int value)
+{
+    if (!ui || !ui->cardSizeValueLabel) {
+        return;
+    }
+
+    ui->cardSizeValueLabel->setText(QString::number(value));
+}
+
 QString MainWindow::dataDirectory() const
 {
     QString path = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
@@ -418,9 +514,12 @@ QFrame *MainWindow::createSoftwareCard(const SoftwareEntry &entry, const QString
         return nullptr;
     }
 
+    const QSize cardSize(cardWidth(), cardHeight());
+
     auto *frame = new QFrame(ui->scrollAreaWidgetContents);
-    frame->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    frame->setMinimumSize(QSize(140, 200));
+    frame->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    frame->setMinimumSize(cardSize);
+    frame->setMaximumSize(cardSize);
     frame->setFrameShape(QFrame::StyledPanel);
     frame->setFrameShadow(QFrame::Raised);
 
@@ -428,9 +527,12 @@ QFrame *MainWindow::createSoftwareCard(const SoftwareEntry &entry, const QString
     layout->setSpacing(6);
     layout->setContentsMargins(8, 8, 8, 8);
 
+    const int iconSide = iconSize();
+
     auto *iconLabel = new QLabel(frame);
-    iconLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    iconLabel->setMinimumSize(QSize(120, 120));
+    iconLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    iconLabel->setMinimumSize(QSize(iconSide, iconSide));
+    iconLabel->setMaximumSize(QSize(iconSide, iconSide));
     iconLabel->setFrameShape(QFrame::Box);
     iconLabel->setAlignment(Qt::AlignCenter);
     iconLabel->setScaledContents(true);
@@ -475,8 +577,9 @@ void MainWindow::configureGridColumns(int columns)
         return;
     }
 
-    for (int col = 0; col < columns; ++col) {
-        ui->gridLayout->setColumnStretch(col, 1);
+    const int maxColumns = qMax(columns, 12);
+    for (int col = 0; col < maxColumns; ++col) {
+        ui->gridLayout->setColumnStretch(col, col < columns ? 1 : 0);
     }
 }
 
@@ -498,7 +601,7 @@ void MainWindow::loadSoftwareEntries()
         return;
     }
 
-    constexpr int kColumns = 5;
+    const int columns = calculateColumnCount(cardWidth());
     int index = 0;
 
     for (const SoftwareEntry &entry : entries) {
@@ -507,13 +610,13 @@ void MainWindow::loadSoftwareEntries()
             continue;
         }
 
-        const int row = index / kColumns;
-        const int col = index % kColumns;
+        const int row = index / columns;
+        const int col = index % columns;
         ui->gridLayout->addWidget(frame, row, col);
         ++index;
     }
 
-    configureGridColumns(kColumns);
+    configureGridColumns(columns);
 }
 
 void MainWindow::clearLayout(QLayout *layout)

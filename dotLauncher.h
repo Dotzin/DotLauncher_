@@ -44,10 +44,18 @@ private:
     bool saveIconFile(const QIcon &icon, QString *relativePath, QString *errorMessage) const;
     QString resolveIconPath(const QString &iconValue, const QString &baseDirPath) const;
     QFrame *createSoftwareCard(const SoftwareEntry &entry, const QString &baseDirPath);
+    void setupCardSizeControls();
+    void handleCardSizeChanged(int value);
+    int cardWidth() const;
+    int cardHeight() const;
+    int iconSize() const;
+    int calculateColumnCount(int cardWidth) const;
+    void updateCardSizeLabel(int value);
     void configureGridColumns(int columns);
     void loadSoftwareEntries();
     void clearLayout(QLayout *layout);
 
+    int m_cardWidth = 140;
     Ui::dotLauncher *ui;
 };
 #endif // DOTLAUNCHER_H

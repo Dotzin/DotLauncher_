@@ -114,6 +114,42 @@
          </property>
         </spacer>
        </item>
+       <item>
+        <widget class="QLabel" name="cardSizeLabel">
+         <property name="text">
+          <string>Card size</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QSlider" name="cardSizeSlider">
+         <property name="minimumSize">
+          <size>
+           <width>160</width>
+           <height>0</height>
+          </size>
+         </property>
+         <property name="minimum">
+          <number>120</number>
+         </property>
+         <property name="maximum">
+          <number>220</number>
+         </property>
+         <property name="value">
+          <number>140</number>
+         </property>
+         <property name="orientation">
+          <enum>Qt::Orientation::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="cardSizeValueLabel">
+         <property name="text">
+          <string>140</string>
+         </property>
+        </widget>
+       </item>
       </layout>
      </widget>
     </item>
@@ -149,22 +185,22 @@
          <property name="frameShape">
           <enum>QFrame::Shape::NoFrame</enum>
          </property>
-         <property name="widgetResizable">
-          <bool>true</bool>
+         <property name="verticalScrollBarPolicy">
+          <enum>Qt::ScrollBarPolicy::ScrollBarAsNeeded</enum>
          </property>
          <property name="horizontalScrollBarPolicy">
           <enum>Qt::ScrollBarPolicy::ScrollBarAlwaysOff</enum>
          </property>
-         <property name="verticalScrollBarPolicy">
-          <enum>Qt::ScrollBarPolicy::ScrollBarAsNeeded</enum>
+         <property name="widgetResizable">
+          <bool>true</bool>
          </property>
          <widget class="QWidget" name="scrollAreaWidgetContents">
           <property name="geometry">
            <rect>
             <x>0</x>
             <y>0</y>
-            <width>772</width>
-            <height>436</height>
+            <width>798</width>
+            <height>449</height>
            </rect>
           </property>
           <layout class="QGridLayout" name="gridLayout" rowstretch="1,1" columnstretch="1,1,1,1,1">
@@ -221,55 +257,46 @@
               </property>
               <item>
                <widget class="QLabel" name="placeholderImage_1">
-
                 <property name="sizePolicy">
-
                  <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-
                   <horstretch>0</horstretch>
-
                   <verstretch>0</verstretch>
-
                  </sizepolicy>
-
-                </property>
-
-                <property name="scaledContents">
-
-                 <bool>true</bool>
-
                 </property>
                 <property name="minimumSize">
-                <size>
-                <width>120</width>
-                <height>120</height>
-                </size>
+                 <size>
+                  <width>80</width>
+                  <height>80</height>
+                 </size>
                 </property>
                 <property name="frameShape">
-                <enum>QFrame::Shape::Box</enum>
+                 <enum>QFrame::Shape::Box</enum>
                 </property>
                 <property name="text">
-                <string>Imagem</string>
+                 <string>Imagem</string>
+                </property>
+                <property name="scaledContents">
+                 <bool>true</bool>
                 </property>
                 <property name="alignment">
-                <set>Qt::AlignmentFlag::AlignCenter</set>
+                 <set>Qt::AlignmentFlag::AlignCenter</set>
                 </property>
                </widget>
               </item>
               <item>
                <widget class="QLabel" name="placeholderTitle_1">
                 <property name="text">
-                <string>Titulo</string>
+                 <string>Titulo</string>
                 </property>
                 <property name="alignment">
-                <set>Qt::AlignmentFlag::AlignCenter</set>
+                 <set>Qt::AlignmentFlag::AlignCenter</set>
                 </property>
                </widget>
               </item>
               <item>
                <widget class="QPushButton" name="placeholderOpenButton_1">
                 <property name="text">
-                <string>Abrir</string>
+                 <string>Abrir</string>
                 </property>
                </widget>
               </item>
@@ -314,55 +341,46 @@
               </property>
               <item>
                <widget class="QLabel" name="placeholderImage_2">
-
                 <property name="sizePolicy">
-
                  <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-
                   <horstretch>0</horstretch>
-
                   <verstretch>0</verstretch>
-
                  </sizepolicy>
-
-                </property>
-
-                <property name="scaledContents">
-
-                 <bool>true</bool>
-
                 </property>
                 <property name="minimumSize">
-                <size>
-                <width>120</width>
-                <height>120</height>
-                </size>
+                 <size>
+                  <width>120</width>
+                  <height>120</height>
+                 </size>
                 </property>
                 <property name="frameShape">
-                <enum>QFrame::Shape::Box</enum>
+                 <enum>QFrame::Shape::Box</enum>
                 </property>
                 <property name="text">
-                <string>Imagem</string>
+                 <string>Imagem</string>
+                </property>
+                <property name="scaledContents">
+                 <bool>true</bool>
                 </property>
                 <property name="alignment">
-                <set>Qt::AlignmentFlag::AlignCenter</set>
+                 <set>Qt::AlignmentFlag::AlignCenter</set>
                 </property>
                </widget>
               </item>
               <item>
                <widget class="QLabel" name="placeholderTitle_2">
                 <property name="text">
-                <string>Titulo</string>
+                 <string>Titulo</string>
                 </property>
                 <property name="alignment">
-                <set>Qt::AlignmentFlag::AlignCenter</set>
+                 <set>Qt::AlignmentFlag::AlignCenter</set>
                 </property>
                </widget>
               </item>
               <item>
                <widget class="QPushButton" name="placeholderOpenButton_2">
                 <property name="text">
-                <string>Abrir</string>
+                 <string>Abrir</string>
                 </property>
                </widget>
               </item>
@@ -407,55 +425,46 @@
               </property>
               <item>
                <widget class="QLabel" name="placeholderImage_3">
-
                 <property name="sizePolicy">
-
                  <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-
                   <horstretch>0</horstretch>
-
                   <verstretch>0</verstretch>
-
                  </sizepolicy>
-
-                </property>
-
-                <property name="scaledContents">
-
-                 <bool>true</bool>
-
                 </property>
                 <property name="minimumSize">
-                <size>
-                <width>120</width>
-                <height>120</height>
-                </size>
+                 <size>
+                  <width>120</width>
+                  <height>120</height>
+                 </size>
                 </property>
                 <property name="frameShape">
-                <enum>QFrame::Shape::Box</enum>
+                 <enum>QFrame::Shape::Box</enum>
                 </property>
                 <property name="text">
-                <string>Imagem</string>
+                 <string>Imagem</string>
+                </property>
+                <property name="scaledContents">
+                 <bool>true</bool>
                 </property>
                 <property name="alignment">
-                <set>Qt::AlignmentFlag::AlignCenter</set>
+                 <set>Qt::AlignmentFlag::AlignCenter</set>
                 </property>
                </widget>
               </item>
               <item>
                <widget class="QLabel" name="placeholderTitle_3">
                 <property name="text">
-                <string>Titulo</string>
+                 <string>Titulo</string>
                 </property>
                 <property name="alignment">
-                <set>Qt::AlignmentFlag::AlignCenter</set>
+                 <set>Qt::AlignmentFlag::AlignCenter</set>
                 </property>
                </widget>
               </item>
               <item>
                <widget class="QPushButton" name="placeholderOpenButton_3">
                 <property name="text">
-                <string>Abrir</string>
+                 <string>Abrir</string>
                 </property>
                </widget>
               </item>
@@ -500,55 +509,46 @@
               </property>
               <item>
                <widget class="QLabel" name="placeholderImage_4">
-
                 <property name="sizePolicy">
-
                  <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-
                   <horstretch>0</horstretch>
-
                   <verstretch>0</verstretch>
-
                  </sizepolicy>
-
-                </property>
-
-                <property name="scaledContents">
-
-                 <bool>true</bool>
-
                 </property>
                 <property name="minimumSize">
-                <size>
-                <width>120</width>
-                <height>120</height>
-                </size>
+                 <size>
+                  <width>120</width>
+                  <height>120</height>
+                 </size>
                 </property>
                 <property name="frameShape">
-                <enum>QFrame::Shape::Box</enum>
+                 <enum>QFrame::Shape::Box</enum>
                 </property>
                 <property name="text">
-                <string>Imagem</string>
+                 <string>Imagem</string>
+                </property>
+                <property name="scaledContents">
+                 <bool>true</bool>
                 </property>
                 <property name="alignment">
-                <set>Qt::AlignmentFlag::AlignCenter</set>
+                 <set>Qt::AlignmentFlag::AlignCenter</set>
                 </property>
                </widget>
               </item>
               <item>
                <widget class="QLabel" name="placeholderTitle_4">
                 <property name="text">
-                <string>Titulo</string>
+                 <string>Titulo</string>
                 </property>
                 <property name="alignment">
-                <set>Qt::AlignmentFlag::AlignCenter</set>
+                 <set>Qt::AlignmentFlag::AlignCenter</set>
                 </property>
                </widget>
               </item>
               <item>
                <widget class="QPushButton" name="placeholderOpenButton_4">
                 <property name="text">
-                <string>Abrir</string>
+                 <string>Abrir</string>
                 </property>
                </widget>
               </item>
@@ -593,55 +593,46 @@
               </property>
               <item>
                <widget class="QLabel" name="placeholderImage_5">
-
                 <property name="sizePolicy">
-
                  <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-
                   <horstretch>0</horstretch>
-
                   <verstretch>0</verstretch>
-
                  </sizepolicy>
-
-                </property>
-
-                <property name="scaledContents">
-
-                 <bool>true</bool>
-
                 </property>
                 <property name="minimumSize">
-                <size>
-                <width>120</width>
-                <height>120</height>
-                </size>
+                 <size>
+                  <width>120</width>
+                  <height>120</height>
+                 </size>
                 </property>
                 <property name="frameShape">
-                <enum>QFrame::Shape::Box</enum>
+                 <enum>QFrame::Shape::Box</enum>
                 </property>
                 <property name="text">
-                <string>Imagem</string>
+                 <string>Imagem</string>
+                </property>
+                <property name="scaledContents">
+                 <bool>true</bool>
                 </property>
                 <property name="alignment">
-                <set>Qt::AlignmentFlag::AlignCenter</set>
+                 <set>Qt::AlignmentFlag::AlignCenter</set>
                 </property>
                </widget>
               </item>
               <item>
                <widget class="QLabel" name="placeholderTitle_5">
                 <property name="text">
-                <string>Titulo</string>
+                 <string>Titulo</string>
                 </property>
                 <property name="alignment">
-                <set>Qt::AlignmentFlag::AlignCenter</set>
+                 <set>Qt::AlignmentFlag::AlignCenter</set>
                 </property>
                </widget>
               </item>
               <item>
                <widget class="QPushButton" name="placeholderOpenButton_5">
                 <property name="text">
-                <string>Abrir</string>
+                 <string>Abrir</string>
                 </property>
                </widget>
               </item>
@@ -686,55 +677,46 @@
               </property>
               <item>
                <widget class="QLabel" name="placeholderImage_6">
-
                 <property name="sizePolicy">
-
                  <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-
                   <horstretch>0</horstretch>
-
                   <verstretch>0</verstretch>
-
                  </sizepolicy>
-
-                </property>
-
-                <property name="scaledContents">
-
-                 <bool>true</bool>
-
                 </property>
                 <property name="minimumSize">
-                <size>
-                <width>120</width>
-                <height>120</height>
-                </size>
+                 <size>
+                  <width>120</width>
+                  <height>120</height>
+                 </size>
                 </property>
                 <property name="frameShape">
-                <enum>QFrame::Shape::Box</enum>
+                 <enum>QFrame::Shape::Box</enum>
                 </property>
                 <property name="text">
-                <string>Imagem</string>
+                 <string>Imagem</string>
+                </property>
+                <property name="scaledContents">
+                 <bool>true</bool>
                 </property>
                 <property name="alignment">
-                <set>Qt::AlignmentFlag::AlignCenter</set>
+                 <set>Qt::AlignmentFlag::AlignCenter</set>
                 </property>
                </widget>
               </item>
               <item>
                <widget class="QLabel" name="placeholderTitle_6">
                 <property name="text">
-                <string>Titulo</string>
+                 <string>Titulo</string>
                 </property>
                 <property name="alignment">
-                <set>Qt::AlignmentFlag::AlignCenter</set>
+                 <set>Qt::AlignmentFlag::AlignCenter</set>
                 </property>
                </widget>
               </item>
               <item>
                <widget class="QPushButton" name="placeholderOpenButton_6">
                 <property name="text">
-                <string>Abrir</string>
+                 <string>Abrir</string>
                 </property>
                </widget>
               </item>
@@ -779,55 +761,46 @@
               </property>
               <item>
                <widget class="QLabel" name="placeholderImage_7">
-
                 <property name="sizePolicy">
-
                  <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-
                   <horstretch>0</horstretch>
-
                   <verstretch>0</verstretch>
-
                  </sizepolicy>
-
-                </property>
-
-                <property name="scaledContents">
-
-                 <bool>true</bool>
-
                 </property>
                 <property name="minimumSize">
-                <size>
-                <width>120</width>
-                <height>120</height>
-                </size>
+                 <size>
+                  <width>120</width>
+                  <height>120</height>
+                 </size>
                 </property>
                 <property name="frameShape">
-                <enum>QFrame::Shape::Box</enum>
+                 <enum>QFrame::Shape::Box</enum>
                 </property>
                 <property name="text">
-                <string>Imagem</string>
+                 <string>Imagem</string>
+                </property>
+                <property name="scaledContents">
+                 <bool>true</bool>
                 </property>
                 <property name="alignment">
-                <set>Qt::AlignmentFlag::AlignCenter</set>
+                 <set>Qt::AlignmentFlag::AlignCenter</set>
                 </property>
                </widget>
               </item>
               <item>
                <widget class="QLabel" name="placeholderTitle_7">
                 <property name="text">
-                <string>Titulo</string>
+                 <string>Titulo</string>
                 </property>
                 <property name="alignment">
-                <set>Qt::AlignmentFlag::AlignCenter</set>
+                 <set>Qt::AlignmentFlag::AlignCenter</set>
                 </property>
                </widget>
               </item>
               <item>
                <widget class="QPushButton" name="placeholderOpenButton_7">
                 <property name="text">
-                <string>Abrir</string>
+                 <string>Abrir</string>
                 </property>
                </widget>
               </item>
@@ -872,55 +845,46 @@
               </property>
               <item>
                <widget class="QLabel" name="placeholderImage_8">
-
                 <property name="sizePolicy">
-
                  <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-
                   <horstretch>0</horstretch>
-
                   <verstretch>0</verstretch>
-
                  </sizepolicy>
-
-                </property>
-
-                <property name="scaledContents">
-
-                 <bool>true</bool>
-
                 </property>
                 <property name="minimumSize">
-                <size>
-                <width>120</width>
-                <height>120</height>
-                </size>
+                 <size>
+                  <width>120</width>
+                  <height>120</height>
+                 </size>
                 </property>
                 <property name="frameShape">
-                <enum>QFrame::Shape::Box</enum>
+                 <enum>QFrame::Shape::Box</enum>
                 </property>
                 <property name="text">
-                <string>Imagem</string>
+                 <string>Imagem</string>
+                </property>
+                <property name="scaledContents">
+                 <bool>true</bool>
                 </property>
                 <property name="alignment">
-                <set>Qt::AlignmentFlag::AlignCenter</set>
+                 <set>Qt::AlignmentFlag::AlignCenter</set>
                 </property>
                </widget>
               </item>
               <item>
                <widget class="QLabel" name="placeholderTitle_8">
                 <property name="text">
-                <string>Titulo</string>
+                 <string>Titulo</string>
                 </property>
                 <property name="alignment">
-                <set>Qt::AlignmentFlag::AlignCenter</set>
+                 <set>Qt::AlignmentFlag::AlignCenter</set>
                 </property>
                </widget>
               </item>
               <item>
                <widget class="QPushButton" name="placeholderOpenButton_8">
                 <property name="text">
-                <string>Abrir</string>
+                 <string>Abrir</string>
                 </property>
                </widget>
               </item>
@@ -965,55 +929,46 @@
               </property>
               <item>
                <widget class="QLabel" name="placeholderImage_9">
-
                 <property name="sizePolicy">
-
                  <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-
                   <horstretch>0</horstretch>
-
                   <verstretch>0</verstretch>
-
                  </sizepolicy>
-
-                </property>
-
-                <property name="scaledContents">
-
-                 <bool>true</bool>
-
                 </property>
                 <property name="minimumSize">
-                <size>
-                <width>120</width>
-                <height>120</height>
-                </size>
+                 <size>
+                  <width>120</width>
+                  <height>120</height>
+                 </size>
                 </property>
                 <property name="frameShape">
-                <enum>QFrame::Shape::Box</enum>
+                 <enum>QFrame::Shape::Box</enum>
                 </property>
                 <property name="text">
-                <string>Imagem</string>
+                 <string>Imagem</string>
+                </property>
+                <property name="scaledContents">
+                 <bool>true</bool>
                 </property>
                 <property name="alignment">
-                <set>Qt::AlignmentFlag::AlignCenter</set>
+                 <set>Qt::AlignmentFlag::AlignCenter</set>
                 </property>
                </widget>
               </item>
               <item>
                <widget class="QLabel" name="placeholderTitle_9">
                 <property name="text">
-                <string>Titulo</string>
+                 <string>Titulo</string>
                 </property>
                 <property name="alignment">
-                <set>Qt::AlignmentFlag::AlignCenter</set>
+                 <set>Qt::AlignmentFlag::AlignCenter</set>
                 </property>
                </widget>
               </item>
               <item>
                <widget class="QPushButton" name="placeholderOpenButton_9">
                 <property name="text">
-                <string>Abrir</string>
+                 <string>Abrir</string>
                 </property>
                </widget>
               </item>
@@ -1058,55 +1013,46 @@
               </property>
               <item>
                <widget class="QLabel" name="placeholderImage_10">
-
                 <property name="sizePolicy">
-
                  <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-
                   <horstretch>0</horstretch>
-
                   <verstretch>0</verstretch>
-
                  </sizepolicy>
-
-                </property>
-
-                <property name="scaledContents">
-
-                 <bool>true</bool>
-
                 </property>
                 <property name="minimumSize">
-                <size>
-                <width>120</width>
-                <height>120</height>
-                </size>
+                 <size>
+                  <width>120</width>
+                  <height>120</height>
+                 </size>
                 </property>
                 <property name="frameShape">
-                <enum>QFrame::Shape::Box</enum>
+                 <enum>QFrame::Shape::Box</enum>
                 </property>
                 <property name="text">
-                <string>Imagem</string>
+                 <string>Imagem</string>
+                </property>
+                <property name="scaledContents">
+                 <bool>true</bool>
                 </property>
                 <property name="alignment">
-                <set>Qt::AlignmentFlag::AlignCenter</set>
+                 <set>Qt::AlignmentFlag::AlignCenter</set>
                 </property>
                </widget>
               </item>
               <item>
                <widget class="QLabel" name="placeholderTitle_10">
                 <property name="text">
-                <string>Titulo</string>
+                 <string>Titulo</string>
                 </property>
                 <property name="alignment">
-                <set>Qt::AlignmentFlag::AlignCenter</set>
+                 <set>Qt::AlignmentFlag::AlignCenter</set>
                 </property>
                </widget>
               </item>
               <item>
                <widget class="QPushButton" name="placeholderOpenButton_10">
                 <property name="text">
-                <string>Abrir</string>
+                 <string>Abrir</string>
                 </property>
                </widget>
               </item>
@@ -1119,7 +1065,6 @@
        </item>
       </layout>
      </widget>
-
     </item>
    </layout>
   </widget>
