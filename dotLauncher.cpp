@@ -160,6 +160,101 @@ bool MainWindow::saveSoftwareEntry(const QString &name,
                                    const QIcon &icon,
                                    QString *errorMessage)
 {
+    SoftwareEntry entry;
+    entry.name = name;
+    entry.exePath = exePath;
+
+    if (!saveIconFile(icon, &entry.iconPath, errorMessage)) {
+        return false;
+    }
+
+    return appendSoftwareEntry(entry, errorMessage);
+}
+
+bool MainWindow::appendSoftwareEntry(const SoftwareEntry &entry, QString *errorMessage)
+{
+    QList<SoftwareEntry> entries;
+    if (!readSoftwareEntries(&entries, errorMessage)) {
+        return false;
+    }
+
+    entries.append(entry);
+    return writeSoftwareEntries(entries, errorMessage);
+}
+
+bool MainWindow::readSoftwareEntries(QList<SoftwareEntry> *entries, QString *errorMessage) const
+{
+    if (!entries) {
+        return false;
+    }
+
+    entries->clear();
+
+    const QString jsonPath = jsonFilePath();
+    if (jsonPath.isEmpty()) {
+        if (errorMessage) {
+            *errorMessage = tr("Nao foi possivel obter a pasta de dados da aplicacao.");
+        }
+        return false;
+    }
+    if (!QFile::exists(jsonPath)) {
+        return true;
+    }
+
+    QFile inputFile(jsonPath);
+    if (!inputFile.open(QIODevice::ReadOnly)) {
+        if (errorMessage) {
+            *errorMessage = tr("Nao foi possivel ler o arquivo JSON.");
+        }
+        return false;
+    }
+
+    const QByteArray data = inputFile.readAll();
+    inputFile.close();
+
+    QJsonParseError parseError;
+    const QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
+    if (parseError.error != QJsonParseError::NoError) {
+        if (errorMessage) {
+            *errorMessage = tr("JSON invalido: %1").arg(parseError.errorString());
+        }
+        return false;
+    }
+
+    QJsonArray items;
+    if (doc.isArray()) {
+        items = doc.array();
+    } else if (doc.isObject()) {
+        const QJsonObject root = doc.object();
+        const QJsonValue stored = root.value(QStringLiteral("softwares"));
+        if (stored.isArray()) {
+            items = stored.toArray();
+        }
+    }
+
+    for (const QJsonValue &value : items) {
+        if (!value.isObject()) {
+            continue;
+        }
+
+        const QJsonObject obj = value.toObject();
+        SoftwareEntry entry;
+        entry.name = obj.value(QStringLiteral("name")).toString().trimmed();
+        entry.exePath = obj.value(QStringLiteral("exePath")).toString();
+        entry.iconPath = obj.value(QStringLiteral("icon")).toString();
+
+        if (entry.name.isEmpty()) {
+            continue;
+        }
+
+        entries->append(entry);
+    }
+
+    return true;
+}
+
+bool MainWindow::writeSoftwareEntries(const QList<SoftwareEntry> &entries, QString *errorMessage) const
+{
     const QString baseDirPath = dataDirectory();
     if (baseDirPath.isEmpty()) {
         if (errorMessage) {
@@ -168,26 +263,106 @@ bool MainWindow::saveSoftwareEntry(const QString &name,
         return false;
     }
 
-    QDir baseDir(baseDirPath);
-    if (!baseDir.exists() && !baseDir.mkpath(".")) {
+    if (!ensureDirectory(baseDirPath, tr("Nao foi possivel criar a pasta de dados."), errorMessage)) {
+        return false;
+    }
+
+    QJsonArray items;
+    for (const SoftwareEntry &entry : entries) {
+        if (entry.name.trimmed().isEmpty()) {
+            continue;
+        }
+
+        QJsonObject obj;
+        obj.insert(QStringLiteral("name"), entry.name);
+        obj.insert(QStringLiteral("exePath"), entry.exePath);
+        obj.insert(QStringLiteral("icon"), entry.iconPath);
+        items.append(obj);
+    }
+
+    QJsonObject root;
+    root.insert(QStringLiteral("softwares"), items);
+
+    const QString jsonPath = jsonFilePath();
+    QFile outputFile(jsonPath);
+    if (!outputFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         if (errorMessage) {
-            *errorMessage = tr("Nao foi possivel criar a pasta de dados.");
+            *errorMessage = tr("Nao foi possivel gravar o arquivo JSON.");
         }
         return false;
     }
 
-    const QString iconsDirPath = baseDir.filePath("icons");
-    QDir iconsDir(iconsDirPath);
-    if (!iconsDir.exists() && !iconsDir.mkpath(".")) {
+    outputFile.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    outputFile.close();
+
+    return true;
+}
+
+QString MainWindow::jsonFilePath() const
+{
+    const QString baseDirPath = dataDirectory();
+    if (baseDirPath.isEmpty()) {
+        return QString();
+    }
+    return QDir(baseDirPath).filePath("software.json");
+}
+
+QString MainWindow::iconsDirectoryPath() const
+{
+    const QString baseDirPath = dataDirectory();
+    if (baseDirPath.isEmpty()) {
+        return QString();
+    }
+    return QDir(baseDirPath).filePath("icons");
+}
+
+bool MainWindow::ensureDirectory(const QString &path, const QString &failureMessage, QString *errorMessage) const
+{
+    if (path.isEmpty()) {
         if (errorMessage) {
-            *errorMessage = tr("Nao foi possivel criar a pasta de icones.");
+            *errorMessage = failureMessage;
         }
         return false;
     }
 
-    QString iconFileName = QUuid::createUuid().toString(QUuid::Id128) + ".png";
+    QDir dir(path);
+    if (!dir.exists() && !dir.mkpath(".")) {
+        if (errorMessage) {
+            *errorMessage = failureMessage;
+        }
+        return false;
+    }
 
-    const QString destinationIconPath = iconsDir.filePath(iconFileName);
+    return true;
+}
+
+bool MainWindow::saveIconFile(const QIcon &icon, QString *relativePath, QString *errorMessage) const
+{
+    const QString baseDirPath = dataDirectory();
+    if (baseDirPath.isEmpty()) {
+        if (errorMessage) {
+            *errorMessage = tr("Nao foi possivel obter a pasta de dados da aplicacao.");
+        }
+        return false;
+    }
+
+    if (!ensureDirectory(baseDirPath, tr("Nao foi possivel criar a pasta de dados."), errorMessage)) {
+        return false;
+    }
+
+    const QString iconsDirPath = iconsDirectoryPath();
+    if (iconsDirPath.isEmpty()) {
+        if (errorMessage) {
+            *errorMessage = tr("Nao foi possivel obter a pasta de dados da aplicacao.");
+        }
+        return false;
+    }
+    if (!ensureDirectory(iconsDirPath, tr("Nao foi possivel criar a pasta de icones."), errorMessage)) {
+        return false;
+    }
+
+    const QString iconFileName = QUuid::createUuid().toString(QUuid::Id128) + ".png";
+    const QString destinationIconPath = QDir(iconsDirPath).filePath(iconFileName);
 
     const QPixmap iconPixmap = icon.pixmap(128, 128);
     if (iconPixmap.isNull()) {
@@ -204,61 +379,9 @@ bool MainWindow::saveSoftwareEntry(const QString &name,
         return false;
     }
 
-    const QString jsonPath = baseDir.filePath("software.json");
-    QJsonArray items;
-
-    if (QFile::exists(jsonPath)) {
-        QFile inputFile(jsonPath);
-        if (!inputFile.open(QIODevice::ReadOnly)) {
-            if (errorMessage) {
-                *errorMessage = tr("Nao foi possivel ler o arquivo JSON.");
-            }
-            return false;
-        }
-
-        const QByteArray data = inputFile.readAll();
-        inputFile.close();
-
-        QJsonParseError parseError;
-        const QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
-        if (parseError.error != QJsonParseError::NoError) {
-            if (errorMessage) {
-                *errorMessage = tr("JSON invalido: %1").arg(parseError.errorString());
-            }
-            return false;
-        }
-
-        if (doc.isArray()) {
-            items = doc.array();
-        } else if (doc.isObject()) {
-            const QJsonObject root = doc.object();
-            const QJsonValue stored = root.value(QStringLiteral("softwares"));
-            if (stored.isArray()) {
-                items = stored.toArray();
-            }
-        }
+    if (relativePath) {
+        *relativePath = QDir(baseDirPath).relativeFilePath(destinationIconPath).replace("\\", "/");
     }
-
-    QJsonObject entry;
-    entry.insert(QStringLiteral("name"), name);
-    entry.insert(QStringLiteral("exePath"), exePath);
-    entry.insert(QStringLiteral("icon"),
-                 QDir(baseDirPath).relativeFilePath(destinationIconPath).replace("\\", "/"));
-    items.append(entry);
-
-    QJsonObject root;
-    root.insert(QStringLiteral("softwares"), items);
-
-    QFile outputFile(jsonPath);
-    if (!outputFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        if (errorMessage) {
-            *errorMessage = tr("Nao foi possivel gravar o arquivo JSON.");
-        }
-        return false;
-    }
-
-    outputFile.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
-    outputFile.close();
 
     return true;
 }
@@ -272,6 +395,91 @@ QString MainWindow::dataDirectory() const
     return path;
 }
 
+QString MainWindow::resolveIconPath(const QString &iconValue, const QString &baseDirPath) const
+{
+    if (iconValue.isEmpty()) {
+        return QString();
+    }
+
+    if (QFileInfo(iconValue).isRelative()) {
+        return QDir(baseDirPath).filePath(iconValue);
+    }
+
+    return iconValue;
+}
+
+QFrame *MainWindow::createSoftwareCard(const SoftwareEntry &entry, const QString &baseDirPath)
+{
+    if (!ui || !ui->scrollAreaWidgetContents) {
+        return nullptr;
+    }
+
+    if (entry.name.trimmed().isEmpty()) {
+        return nullptr;
+    }
+
+    auto *frame = new QFrame(ui->scrollAreaWidgetContents);
+    frame->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    frame->setMinimumSize(QSize(140, 200));
+    frame->setFrameShape(QFrame::StyledPanel);
+    frame->setFrameShadow(QFrame::Raised);
+
+    auto *layout = new QVBoxLayout(frame);
+    layout->setSpacing(6);
+    layout->setContentsMargins(8, 8, 8, 8);
+
+    auto *iconLabel = new QLabel(frame);
+    iconLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    iconLabel->setMinimumSize(QSize(120, 120));
+    iconLabel->setFrameShape(QFrame::Box);
+    iconLabel->setAlignment(Qt::AlignCenter);
+    iconLabel->setScaledContents(true);
+
+    const QString iconPath = resolveIconPath(entry.iconPath, baseDirPath);
+    const QPixmap pixmap(iconPath);
+    if (pixmap.isNull()) {
+        iconLabel->setText(tr("Sem icone"));
+    } else {
+        iconLabel->setPixmap(pixmap.scaled(iconLabel->size(),
+                                           Qt::KeepAspectRatio,
+                                           Qt::SmoothTransformation));
+    }
+
+    auto *titleLabel = new QLabel(entry.name, frame);
+    titleLabel->setAlignment(Qt::AlignCenter);
+
+    auto *openButton = new QPushButton(tr("Abrir"), frame);
+
+    layout->addWidget(iconLabel);
+    layout->addWidget(titleLabel);
+    layout->addWidget(openButton);
+
+    const QString exePath = entry.exePath;
+    connect(openButton, &QPushButton::clicked, this, [this, exePath]() {
+        if (exePath.isEmpty() || !QFile::exists(exePath)) {
+            QMessageBox::warning(this, tr("Executavel ausente"), tr("Caminho do .exe nao encontrado."));
+            return;
+        }
+
+        if (!QProcess::startDetached(exePath)) {
+            QMessageBox::warning(this, tr("Falha ao abrir"), tr("Nao foi possivel abrir o executavel."));
+        }
+    });
+
+    return frame;
+}
+
+void MainWindow::configureGridColumns(int columns)
+{
+    if (!ui || !ui->gridLayout) {
+        return;
+    }
+
+    for (int col = 0; col < columns; ++col) {
+        ui->gridLayout->setColumnStretch(col, 1);
+    }
+}
+
 void MainWindow::loadSoftwareEntries()
 {
     if (!ui || !ui->gridLayout) {
@@ -280,118 +488,32 @@ void MainWindow::loadSoftwareEntries()
 
     clearLayout(ui->gridLayout);
 
+    QList<SoftwareEntry> entries;
+    if (!readSoftwareEntries(&entries)) {
+        return;
+    }
+
     const QString baseDirPath = dataDirectory();
     if (baseDirPath.isEmpty()) {
         return;
     }
 
-    const QString jsonPath = QDir(baseDirPath).filePath("software.json");
-    if (!QFile::exists(jsonPath)) {
-        return;
-    }
-
-    QFile inputFile(jsonPath);
-    if (!inputFile.open(QIODevice::ReadOnly)) {
-        return;
-    }
-
-    const QByteArray data = inputFile.readAll();
-    inputFile.close();
-
-    QJsonParseError parseError;
-    const QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
-    if (parseError.error != QJsonParseError::NoError) {
-        return;
-    }
-
-    QJsonArray items;
-    if (doc.isArray()) {
-        items = doc.array();
-    } else if (doc.isObject()) {
-        const QJsonObject root = doc.object();
-        const QJsonValue stored = root.value(QStringLiteral("softwares"));
-        if (stored.isArray()) {
-            items = stored.toArray();
-        }
-    }
-
-    const int columns = 5;
+    constexpr int kColumns = 5;
     int index = 0;
 
-    for (const QJsonValue &value : items) {
-        if (!value.isObject()) {
+    for (const SoftwareEntry &entry : entries) {
+        QFrame *frame = createSoftwareCard(entry, baseDirPath);
+        if (!frame) {
             continue;
         }
 
-        const QJsonObject obj = value.toObject();
-        const QString name = obj.value(QStringLiteral("name")).toString().trimmed();
-        const QString exePath = obj.value(QStringLiteral("exePath")).toString();
-        const QString iconValue = obj.value(QStringLiteral("icon")).toString();
-
-        if (name.isEmpty()) {
-            continue;
-        }
-
-        auto *frame = new QFrame(ui->scrollAreaWidgetContents);
-        frame->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-        frame->setMinimumSize(QSize(140, 200));
-        frame->setFrameShape(QFrame::StyledPanel);
-        frame->setFrameShadow(QFrame::Raised);
-
-        auto *layout = new QVBoxLayout(frame);
-        layout->setSpacing(6);
-        layout->setContentsMargins(8, 8, 8, 8);
-
-        auto *iconLabel = new QLabel(frame);
-        iconLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-        iconLabel->setMinimumSize(QSize(120, 120));
-        iconLabel->setFrameShape(QFrame::Box);
-        iconLabel->setAlignment(Qt::AlignCenter);
-        iconLabel->setScaledContents(true);
-
-        QString iconPath = iconValue;
-        if (!iconValue.isEmpty() && QFileInfo(iconValue).isRelative()) {
-            iconPath = QDir(baseDirPath).filePath(iconValue);
-        }
-
-        QPixmap pixmap(iconPath);
-        if (pixmap.isNull()) {
-            iconLabel->setText(tr("Sem icone"));
-        } else {
-            iconLabel->setPixmap(pixmap.scaled(iconLabel->size(),
-                                               Qt::KeepAspectRatio,
-                                               Qt::SmoothTransformation));
-        }
-
-        auto *titleLabel = new QLabel(name, frame);
-        titleLabel->setAlignment(Qt::AlignCenter);
-
-        auto *openButton = new QPushButton(tr("Abrir"), frame);
-
-        layout->addWidget(iconLabel);
-        layout->addWidget(titleLabel);
-        layout->addWidget(openButton);
-
-        connect(openButton, &QPushButton::clicked, this, [this, exePath]() {
-            if (exePath.isEmpty() || !QFile::exists(exePath)) {
-                QMessageBox::warning(this, tr("Executavel ausente"), tr("Caminho do .exe nao encontrado."));
-                return;
-            }
-
-            if (!QProcess::startDetached(exePath)) {
-                QMessageBox::warning(this, tr("Falha ao abrir"), tr("Nao foi possivel abrir o executavel."));
-            }
-        });
-
-        const int row = index / columns;
-        const int col = index % columns;
+        const int row = index / kColumns;
+        const int col = index % kColumns;
         ui->gridLayout->addWidget(frame, row, col);
         ++index;
     }
 
-    for (int col = 0; col < columns; ++col) {
-        ui->gridLayout->setColumnStretch(col, 1);
-    }
+    configureGridColumns(kColumns);
 }
 
 void MainWindow::clearLayout(QLayout *layout)
