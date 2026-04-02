@@ -27,6 +27,7 @@
 #include <QSize>
 #include <QSizePolicy>
 #include <QStandardPaths>
+#include <QTimer>
 #include <QtMath>
 #include <QUuid>
 #include <QVBoxLayout>
@@ -53,7 +54,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(ui->pushButton, &QPushButton::clicked, this, &MainWindow::openAddSoftwareDialog);
 
-    loadSoftwareEntries();
+    QTimer::singleShot(0, this, [this]() { loadSoftwareEntries(); });
 }
 
 MainWindow::~MainWindow()
