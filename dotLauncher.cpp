@@ -95,6 +95,31 @@ void MainWindow::openAddSoftwareDialog()
 
     formLayout->addRow(tr("Arquivo .exe:"), exeRowWidget);
 
+    QStringList availableCategories;
+    QString categoriesError;
+    if (!readSoftwareEntries(nullptr, &availableCategories, &categoriesError)) {
+        if (!categoriesError.isEmpty()) {
+            QMessageBox::warning(&dialog, tr("Categorias"), categoriesError);
+        }
+    }
+
+    auto *categoryCombo = new QComboBox(&dialog);
+    categoryCombo->setEditable(true);
+    categoryCombo->setInsertPolicy(QComboBox::NoInsert);
+    categoryCombo->setMinimumWidth(200);
+    if (auto *lineEdit = categoryCombo->lineEdit()) {
+        lineEdit->setPlaceholderText(tr("Sem categoria"));
+    }
+    for (const QString &category : availableCategories) {
+        categoryCombo->addItem(category, category);
+    }
+    categoryCombo->setCurrentIndex(-1);
+    if (auto *lineEdit = categoryCombo->lineEdit()) {
+        lineEdit->setText(QString());
+    }
+
+    formLayout->addRow(tr("Categoria:"), categoryCombo);
+
     auto *iconPreview = new QLabel(&dialog);
     iconPreview->setFixedSize(96, 96);
     iconPreview->setFrameShape(QFrame::Box);
@@ -166,8 +191,17 @@ void MainWindow::openAddSoftwareDialog()
             return;
         }
 
+        const QString category = normalizeCategory(categoryCombo->currentText());
+        if (!category.isEmpty() && isReservedCategoryName(category)) {
+            QMessageBox::warning(
+                &dialog,
+                tr("Categoria invalida"),
+                tr("Escolha um nome de categoria diferente de \"Todas\" ou \"Sem categoria\"."));
+            return;
+        }
+
         QString errorMessage;
-        if (!saveSoftwareEntry(name, selectedExePath, selectedIcon, &errorMessage)) {
+        if (!saveSoftwareEntry(name, selectedExePath, selectedIcon, category, &errorMessage)) {
             QMessageBox::critical(&dialog, tr("Erro ao salvar"), errorMessage);
             return;
         }
