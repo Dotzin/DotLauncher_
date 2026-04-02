@@ -5,6 +5,7 @@
 #include <QList>
 #include <QMainWindow>
 #include <QString>
+#include <QStringList>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -25,18 +26,37 @@ public:
 
 private slots:
     void openAddSoftwareDialog();
+    void openManageCategoriesDialog();
+    void handleCategoryFilterChanged(int index);
 
 private:
     struct SoftwareEntry {
         QString name;
         QString exePath;
         QString iconPath;
+        QString category;
     };
 
-    bool saveSoftwareEntry(const QString &name, const QString &exePath, const QIcon &icon, QString *errorMessage = nullptr);
+    bool saveSoftwareEntry(const QString &name,
+                           const QString &exePath,
+                           const QIcon &icon,
+                           const QString &category,
+                           QString *errorMessage = nullptr);
     bool appendSoftwareEntry(const SoftwareEntry &entry, QString *errorMessage = nullptr);
-    bool readSoftwareEntries(QList<SoftwareEntry> *entries, QString *errorMessage = nullptr) const;
-    bool writeSoftwareEntries(const QList<SoftwareEntry> &entries, QString *errorMessage = nullptr) const;
+    bool readSoftwareEntries(QList<SoftwareEntry> *entries,
+                             QStringList *categories = nullptr,
+                             QString *errorMessage = nullptr) const;
+    bool writeSoftwareEntries(const QList<SoftwareEntry> &entries,
+                              const QStringList &categories,
+                              QString *errorMessage = nullptr) const;
+    QStringList normalizeCategories(const QStringList &categories) const;
+    bool containsCategory(const QStringList &categories,
+                          const QString &value,
+                          Qt::CaseSensitivity sensitivity = Qt::CaseInsensitive) const;
+    bool isReservedCategoryName(const QString &name) const;
+    QString normalizeCategory(const QString &name) const;
+    QString selectedCategoryFilterKey() const;
+    void updateCategoryFilterCombo(const QStringList &categories);
     bool removeSoftwareEntry(const SoftwareEntry &entry, QString *errorMessage = nullptr);
     QString dataDirectory() const;
     QString jsonFilePath() const;

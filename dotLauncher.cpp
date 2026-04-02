@@ -2,6 +2,8 @@
 #include "ui_dotLauncher.h"
 
 #include <QCoreApplication>
+#include <QAbstractItemView>
+#include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
@@ -12,12 +14,14 @@
 #include <QFormLayout>
 #include <QFrame>
 #include <QHBoxLayout>
+#include <QInputDialog>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
 #include <QLayout>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMargins>
 #include <QMessageBox>
 #include <QProcess>
@@ -43,6 +47,8 @@ constexpr int kMaxCardWidth = 220;
 constexpr int kCardWidthStep = 5;
 constexpr int kCardWidthPageStep = 10;
 constexpr int kCardWidthTickInterval = 20;
+const QString kFilterAllKey = QStringLiteral("__all__");
+const QString kFilterUncategorizedKey = QStringLiteral("__uncategorized__");
 } // namespace
 
 MainWindow::MainWindow(QWidget *parent)
@@ -54,6 +60,15 @@ MainWindow::MainWindow(QWidget *parent)
     setupCardSizeControls();
 
     connect(ui->pushButton, &QPushButton::clicked, this, &MainWindow::openAddSoftwareDialog);
+    if (ui->categoryFilterCombo) {
+        connect(ui->categoryFilterCombo,
+                QOverload<int>::of(&QComboBox::currentIndexChanged),
+                this,
+                &MainWindow::handleCategoryFilterChanged);
+    }
+    if (ui->manageCategoriesButton) {
+        connect(ui->manageCategoriesButton, &QPushButton::clicked, this, &MainWindow::openManageCategoriesDialog);
+    }
 
     QTimer::singleShot(0, this, [this]() { loadSoftwareEntries(); });
 }
@@ -88,6 +103,31 @@ void MainWindow::openAddSoftwareDialog()
     exeRowLayout->addWidget(chooseExeButton);
 
     formLayout->addRow(tr("Arquivo .exe:"), exeRowWidget);
+
+    QStringList availableCategories;
+    QString categoriesError;
+    if (!readSoftwareEntries(nullptr, &availableCategories, &categoriesError)) {
+        if (!categoriesError.isEmpty()) {
+            QMessageBox::warning(&dialog, tr("Categorias"), categoriesError);
+        }
+    }
+
+    auto *categoryCombo = new QComboBox(&dialog);
+    categoryCombo->setEditable(true);
+    categoryCombo->setInsertPolicy(QComboBox::NoInsert);
+    categoryCombo->setMinimumWidth(200);
+    if (auto *lineEdit = categoryCombo->lineEdit()) {
+        lineEdit->setPlaceholderText(tr("Sem categoria"));
+    }
+    for (const QString &category : availableCategories) {
+        categoryCombo->addItem(category, category);
+    }
+    categoryCombo->setCurrentIndex(-1);
+    if (auto *lineEdit = categoryCombo->lineEdit()) {
+        lineEdit->setText(QString());
+    }
+
+    formLayout->addRow(tr("Categoria:"), categoryCombo);
 
     auto *iconPreview = new QLabel(&dialog);
     iconPreview->setFixedSize(96, 96);
@@ -160,8 +200,17 @@ void MainWindow::openAddSoftwareDialog()
             return;
         }
 
+        const QString category = normalizeCategory(categoryCombo->currentText());
+        if (!category.isEmpty() && isReservedCategoryName(category)) {
+            QMessageBox::warning(
+                &dialog,
+                tr("Categoria invalida"),
+                tr("Escolha um nome de categoria diferente de \"Todas\" ou \"Sem categoria\"."));
+            return;
+        }
+
         QString errorMessage;
-        if (!saveSoftwareEntry(name, selectedExePath, selectedIcon, &errorMessage)) {
+        if (!saveSoftwareEntry(name, selectedExePath, selectedIcon, category, &errorMessage)) {
             QMessageBox::critical(&dialog, tr("Erro ao salvar"), errorMessage);
             return;
         }
@@ -174,14 +223,209 @@ void MainWindow::openAddSoftwareDialog()
     }
 }
 
+void MainWindow::openManageCategoriesDialog()
+{
+    QList<SoftwareEntry> entries;
+    QStringList categories;
+    QString errorMessage;
+    if (!readSoftwareEntries(&entries, &categories, &errorMessage)) {
+        if (errorMessage.isEmpty()) {
+            errorMessage = tr("Nao foi possivel carregar as categorias.");
+        }
+        QMessageBox::warning(this, tr("Categorias"), errorMessage);
+        return;
+    }
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Gerenciar categorias"));
+
+    auto *layout = new QVBoxLayout(&dialog);
+
+    auto *listWidget = new QListWidget(&dialog);
+    listWidget->addItems(categories);
+    listWidget->setSelectionMode(QAbstractItemView::SingleSelection);
+    layout->addWidget(listWidget);
+
+    auto *actionsRow = new QWidget(&dialog);
+    auto *actionsLayout = new QHBoxLayout(actionsRow);
+    actionsLayout->setContentsMargins(0, 0, 0, 0);
+    actionsLayout->setSpacing(8);
+
+    auto *addButton = new QPushButton(tr("Adicionar"), &dialog);
+    auto *renameButton = new QPushButton(tr("Renomear"), &dialog);
+    auto *removeButton = new QPushButton(tr("Remover"), &dialog);
+
+    actionsLayout->addWidget(addButton);
+    actionsLayout->addWidget(renameButton);
+    actionsLayout->addWidget(removeButton);
+    actionsLayout->addStretch(1);
+    layout->addWidget(actionsRow);
+
+    auto *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    buttonBox->button(QDialogButtonBox::Ok)->setText(tr("Salvar"));
+    buttonBox->button(QDialogButtonBox::Cancel)->setText(tr("Cancelar"));
+    layout->addWidget(buttonBox);
+
+    auto refreshList = [&]() {
+        listWidget->clear();
+        listWidget->addItems(categories);
+    };
+
+    connect(addButton, &QPushButton::clicked, &dialog, [&]() {
+        bool ok = false;
+        const QString name = QInputDialog::getText(
+            &dialog,
+            tr("Nova categoria"),
+            tr("Nome da categoria:"),
+            QLineEdit::Normal,
+            QString(),
+            &ok);
+
+        if (!ok) {
+            return;
+        }
+
+        const QString trimmed = normalizeCategory(name);
+        if (trimmed.isEmpty()) {
+            QMessageBox::warning(&dialog, tr("Categoria invalida"), tr("Digite um nome valido."));
+            return;
+        }
+        if (isReservedCategoryName(trimmed)) {
+            QMessageBox::warning(
+                &dialog,
+                tr("Categoria invalida"),
+                tr("Escolha um nome diferente de \"Todas\" ou \"Sem categoria\"."));
+            return;
+        }
+        if (containsCategory(categories, trimmed, Qt::CaseInsensitive)) {
+            QMessageBox::warning(&dialog, tr("Categoria duplicada"), tr("Essa categoria ja existe."));
+            return;
+        }
+
+        categories.append(trimmed);
+        refreshList();
+        listWidget->setCurrentRow(listWidget->count() - 1);
+    });
+
+    connect(renameButton, &QPushButton::clicked, &dialog, [&]() {
+        QListWidgetItem *currentItem = listWidget->currentItem();
+        if (!currentItem) {
+            QMessageBox::warning(&dialog, tr("Selecione"), tr("Escolha uma categoria para renomear."));
+            return;
+        }
+
+        const QString oldName = currentItem->text();
+        bool ok = false;
+        const QString newName = QInputDialog::getText(
+            &dialog,
+            tr("Renomear categoria"),
+            tr("Novo nome:"),
+            QLineEdit::Normal,
+            oldName,
+            &ok);
+
+        if (!ok) {
+            return;
+        }
+
+        const QString trimmed = normalizeCategory(newName);
+        if (trimmed.isEmpty()) {
+            QMessageBox::warning(&dialog, tr("Categoria invalida"), tr("Digite um nome valido."));
+            return;
+        }
+        if (isReservedCategoryName(trimmed)) {
+            QMessageBox::warning(
+                &dialog,
+                tr("Categoria invalida"),
+                tr("Escolha um nome diferente de \"Todas\" ou \"Sem categoria\"."));
+            return;
+        }
+        if (oldName.compare(trimmed, Qt::CaseInsensitive) != 0
+            && containsCategory(categories, trimmed, Qt::CaseInsensitive)) {
+            QMessageBox::warning(&dialog, tr("Categoria duplicada"), tr("Essa categoria ja existe."));
+            return;
+        }
+
+        for (QString &category : categories) {
+            if (category.compare(oldName, Qt::CaseInsensitive) == 0) {
+                category = trimmed;
+                break;
+            }
+        }
+
+        for (SoftwareEntry &entry : entries) {
+            if (entry.category.compare(oldName, Qt::CaseInsensitive) == 0) {
+                entry.category = trimmed;
+            }
+        }
+
+        refreshList();
+        const int row = categories.indexOf(trimmed);
+        if (row >= 0) {
+            listWidget->setCurrentRow(row);
+        }
+    });
+
+    connect(removeButton, &QPushButton::clicked, &dialog, [&]() {
+        QListWidgetItem *currentItem = listWidget->currentItem();
+        if (!currentItem) {
+            QMessageBox::warning(&dialog, tr("Selecione"), tr("Escolha uma categoria para remover."));
+            return;
+        }
+
+        const QString name = currentItem->text();
+        const auto response = QMessageBox::question(
+            &dialog,
+            tr("Remover categoria"),
+            tr("Deseja remover a categoria \"%1\"?").arg(name));
+
+        if (response != QMessageBox::Yes) {
+            return;
+        }
+
+        for (int i = categories.size() - 1; i >= 0; --i) {
+            if (categories.at(i).compare(name, Qt::CaseInsensitive) == 0) {
+                categories.removeAt(i);
+            }
+        }
+
+        for (SoftwareEntry &entry : entries) {
+            if (entry.category.compare(name, Qt::CaseInsensitive) == 0) {
+                entry.category.clear();
+            }
+        }
+
+        refreshList();
+    });
+
+    connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    connect(buttonBox, &QDialogButtonBox::accepted, &dialog, [&]() {
+        QString saveError;
+        if (!writeSoftwareEntries(entries, categories, &saveError)) {
+            if (saveError.isEmpty()) {
+                saveError = tr("Nao foi possivel salvar as categorias.");
+            }
+            QMessageBox::warning(&dialog, tr("Erro ao salvar"), saveError);
+            return;
+        }
+        dialog.accept();
+    });
+
+    if (dialog.exec() == QDialog::Accepted) {
+        loadSoftwareEntries();
+    }
+}
+
 bool MainWindow::saveSoftwareEntry(const QString &name,
                                    const QString &exePath,
                                    const QIcon &icon,
+                                   const QString &category,
                                    QString *errorMessage)
 {
     SoftwareEntry entry;
     entry.name = name;
     entry.exePath = exePath;
+    entry.category = normalizeCategory(category);
 
     if (!saveIconFile(icon, &entry.iconPath, errorMessage)) {
         return false;
@@ -193,21 +437,34 @@ bool MainWindow::saveSoftwareEntry(const QString &name,
 bool MainWindow::appendSoftwareEntry(const SoftwareEntry &entry, QString *errorMessage)
 {
     QList<SoftwareEntry> entries;
-    if (!readSoftwareEntries(&entries, errorMessage)) {
+    QStringList categories;
+    if (!readSoftwareEntries(&entries, &categories, errorMessage)) {
         return false;
     }
 
     entries.append(entry);
-    return writeSoftwareEntries(entries, errorMessage);
+    const QString normalizedCategory = normalizeCategory(entry.category);
+    if (!normalizedCategory.isEmpty()) {
+        categories.append(normalizedCategory);
+    }
+    categories = normalizeCategories(categories);
+    return writeSoftwareEntries(entries, categories, errorMessage);
 }
 
-bool MainWindow::readSoftwareEntries(QList<SoftwareEntry> *entries, QString *errorMessage) const
+bool MainWindow::readSoftwareEntries(QList<SoftwareEntry> *entries,
+                                     QStringList *categories,
+                                     QString *errorMessage) const
 {
-    if (!entries) {
+    if (!entries && !categories) {
         return false;
     }
 
-    entries->clear();
+    if (entries) {
+        entries->clear();
+    }
+    if (categories) {
+        categories->clear();
+    }
 
     const QString jsonPath = jsonFilePath();
     if (jsonPath.isEmpty()) {
@@ -241,6 +498,7 @@ bool MainWindow::readSoftwareEntries(QList<SoftwareEntry> *entries, QString *err
     }
 
     QJsonArray items;
+    QStringList loadedCategories;
     if (doc.isArray()) {
         items = doc.array();
     } else if (doc.isObject()) {
@@ -248,6 +506,16 @@ bool MainWindow::readSoftwareEntries(QList<SoftwareEntry> *entries, QString *err
         const QJsonValue stored = root.value(QStringLiteral("softwares"));
         if (stored.isArray()) {
             items = stored.toArray();
+        }
+        const QJsonValue categoriesValue = root.value(QStringLiteral("categories"));
+        if (categoriesValue.isArray()) {
+            const QJsonArray categoryArray = categoriesValue.toArray();
+            for (const QJsonValue &categoryValue : categoryArray) {
+                const QString category = categoryValue.toString().trimmed();
+                if (!category.isEmpty()) {
+                    loadedCategories.append(category);
+                }
+            }
         }
     }
 
@@ -261,18 +529,31 @@ bool MainWindow::readSoftwareEntries(QList<SoftwareEntry> *entries, QString *err
         entry.name = obj.value(QStringLiteral("name")).toString().trimmed();
         entry.exePath = obj.value(QStringLiteral("exePath")).toString();
         entry.iconPath = obj.value(QStringLiteral("icon")).toString();
+        entry.category = obj.value(QStringLiteral("category")).toString().trimmed();
 
         if (entry.name.isEmpty()) {
             continue;
         }
 
-        entries->append(entry);
+        if (!entry.category.isEmpty()) {
+            loadedCategories.append(entry.category);
+        }
+
+        if (entries) {
+            entries->append(entry);
+        }
+    }
+
+    if (categories) {
+        *categories = normalizeCategories(loadedCategories);
     }
 
     return true;
 }
 
-bool MainWindow::writeSoftwareEntries(const QList<SoftwareEntry> &entries, QString *errorMessage) const
+bool MainWindow::writeSoftwareEntries(const QList<SoftwareEntry> &entries,
+                                      const QStringList &categories,
+                                      QString *errorMessage) const
 {
     const QString baseDirPath = dataDirectory();
     if (baseDirPath.isEmpty()) {
@@ -296,10 +577,23 @@ bool MainWindow::writeSoftwareEntries(const QList<SoftwareEntry> &entries, QStri
         obj.insert(QStringLiteral("name"), entry.name);
         obj.insert(QStringLiteral("exePath"), entry.exePath);
         obj.insert(QStringLiteral("icon"), entry.iconPath);
+        if (!entry.category.trimmed().isEmpty()) {
+            obj.insert(QStringLiteral("category"), entry.category.trimmed());
+        }
         items.append(obj);
     }
 
     QJsonObject root;
+    const QStringList normalizedCategories = normalizeCategories(categories);
+    if (!normalizedCategories.isEmpty()) {
+        QJsonArray categoryArray;
+        for (const QString &category : normalizedCategories) {
+            if (!category.trimmed().isEmpty()) {
+                categoryArray.append(category);
+            }
+        }
+        root.insert(QStringLiteral("categories"), categoryArray);
+    }
     root.insert(QStringLiteral("softwares"), items);
 
     const QString jsonPath = jsonFilePath();
@@ -317,10 +611,115 @@ bool MainWindow::writeSoftwareEntries(const QList<SoftwareEntry> &entries, QStri
     return true;
 }
 
+QStringList MainWindow::normalizeCategories(const QStringList &categories) const
+{
+    QStringList result;
+    for (const QString &category : categories) {
+        const QString trimmed = category.trimmed();
+        if (trimmed.isEmpty()) {
+            continue;
+        }
+        if (containsCategory(result, trimmed, Qt::CaseInsensitive)) {
+            continue;
+        }
+        result.append(trimmed);
+    }
+    return result;
+}
+
+bool MainWindow::containsCategory(const QStringList &categories,
+                                  const QString &value,
+                                  Qt::CaseSensitivity sensitivity) const
+{
+    for (const QString &category : categories) {
+        if (category.compare(value, sensitivity) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool MainWindow::isReservedCategoryName(const QString &name) const
+{
+    const QString trimmed = name.trimmed();
+    if (trimmed.isEmpty()) {
+        return false;
+    }
+    if (trimmed.compare(QStringLiteral("Todas"), Qt::CaseInsensitive) == 0) {
+        return true;
+    }
+    if (trimmed.compare(QStringLiteral("Sem categoria"), Qt::CaseInsensitive) == 0) {
+        return true;
+    }
+    if (trimmed.compare(kFilterAllKey, Qt::CaseInsensitive) == 0) {
+        return true;
+    }
+    if (trimmed.compare(kFilterUncategorizedKey, Qt::CaseInsensitive) == 0) {
+        return true;
+    }
+    return false;
+}
+
+QString MainWindow::normalizeCategory(const QString &name) const
+{
+    return name.trimmed();
+}
+
+QString MainWindow::selectedCategoryFilterKey() const
+{
+    if (!ui || !ui->categoryFilterCombo) {
+        return kFilterAllKey;
+    }
+
+    const QVariant data = ui->categoryFilterCombo->currentData();
+    if (data.isValid()) {
+        return data.toString();
+    }
+
+    return kFilterAllKey;
+}
+
+void MainWindow::updateCategoryFilterCombo(const QStringList &categories)
+{
+    if (!ui || !ui->categoryFilterCombo) {
+        return;
+    }
+
+    const QString currentKey = ui->categoryFilterCombo->currentData().toString();
+    const QString currentText = ui->categoryFilterCombo->currentText();
+
+    ui->categoryFilterCombo->blockSignals(true);
+    ui->categoryFilterCombo->clear();
+    ui->categoryFilterCombo->addItem(tr("Todas"), kFilterAllKey);
+    ui->categoryFilterCombo->addItem(tr("Sem categoria"), kFilterUncategorizedKey);
+
+    const QStringList normalized = normalizeCategories(categories);
+    for (const QString &category : normalized) {
+        ui->categoryFilterCombo->addItem(category, category);
+    }
+
+    int restoreIndex = ui->categoryFilterCombo->findData(currentKey);
+    if (restoreIndex < 0 && !currentText.isEmpty()) {
+        restoreIndex = ui->categoryFilterCombo->findText(currentText, Qt::MatchFixedString);
+    }
+    if (restoreIndex < 0) {
+        restoreIndex = 0;
+    }
+
+    ui->categoryFilterCombo->setCurrentIndex(restoreIndex);
+    ui->categoryFilterCombo->blockSignals(false);
+}
+
+void MainWindow::handleCategoryFilterChanged(int)
+{
+    loadSoftwareEntries();
+}
+
 bool MainWindow::removeSoftwareEntry(const SoftwareEntry &entry, QString *errorMessage)
 {
     QList<SoftwareEntry> entries;
-    if (!readSoftwareEntries(&entries, errorMessage)) {
+    QStringList categories;
+    if (!readSoftwareEntries(&entries, &categories, errorMessage)) {
         return false;
     }
 
@@ -340,7 +739,7 @@ bool MainWindow::removeSoftwareEntry(const SoftwareEntry &entry, QString *errorM
     }
 
     entries.removeAt(removeIndex);
-    if (!writeSoftwareEntries(entries, errorMessage)) {
+    if (!writeSoftwareEntries(entries, categories, errorMessage)) {
         return false;
     }
 
@@ -622,6 +1021,15 @@ QFrame *MainWindow::createSoftwareCard(const SoftwareEntry &entry, const QString
     titleLabel->setFont(titleFont);
     titleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
+    const QString categoryText = normalizeCategory(entry.category);
+    auto *categoryLabel = new QLabel(frame);
+    QFont categoryFont = categoryLabel->font();
+    categoryFont.setPointSizeF(qMax(6.0, categoryFont.pointSizeF() - 1.0));
+    categoryLabel->setFont(categoryFont);
+    categoryLabel->setText(categoryText.isEmpty() ? tr("Sem categoria") : categoryText);
+    categoryLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    categoryLabel->setStyleSheet(QStringLiteral("color: #6e6e6e;"));
+
     auto *openButton = new QPushButton(tr("Abrir"), frame);
     openButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
@@ -639,6 +1047,7 @@ QFrame *MainWindow::createSoftwareCard(const SoftwareEntry &entry, const QString
 
     layout->addWidget(iconLabel, 0, Qt::AlignHCenter);
     layout->addWidget(titleLabel);
+    layout->addWidget(categoryLabel);
     layout->addWidget(buttonRow);
 
     const QString exePath = entry.exePath;
@@ -698,9 +1107,12 @@ void MainWindow::loadSoftwareEntries()
     clearLayout(ui->gridLayout);
 
     QList<SoftwareEntry> entries;
-    if (!readSoftwareEntries(&entries)) {
+    QStringList categories;
+    if (!readSoftwareEntries(&entries, &categories)) {
         return;
     }
+
+    updateCategoryFilterCombo(categories);
 
     const QString baseDirPath = dataDirectory();
     if (baseDirPath.isEmpty()) {
@@ -709,8 +1121,20 @@ void MainWindow::loadSoftwareEntries()
 
     const int columns = calculateColumnCount(cardWidth());
     int index = 0;
+    const QString filterKey = selectedCategoryFilterKey();
 
     for (const SoftwareEntry &entry : entries) {
+        const QString entryCategory = normalizeCategory(entry.category);
+        if (filterKey == kFilterUncategorizedKey) {
+            if (!entryCategory.isEmpty()) {
+                continue;
+            }
+        } else if (filterKey != kFilterAllKey) {
+            if (entryCategory.compare(filterKey, Qt::CaseInsensitive) != 0) {
+                continue;
+            }
+        }
+
         QFrame *frame = createSoftwareCard(entry, baseDirPath);
         if (!frame) {
             continue;
