@@ -407,10 +407,115 @@ bool MainWindow::writeSoftwareEntries(const QList<SoftwareEntry> &entries,
     return true;
 }
 
+QStringList MainWindow::normalizeCategories(const QStringList &categories) const
+{
+    QStringList result;
+    for (const QString &category : categories) {
+        const QString trimmed = category.trimmed();
+        if (trimmed.isEmpty()) {
+            continue;
+        }
+        if (containsCategory(result, trimmed, Qt::CaseInsensitive)) {
+            continue;
+        }
+        result.append(trimmed);
+    }
+    return result;
+}
+
+bool MainWindow::containsCategory(const QStringList &categories,
+                                  const QString &value,
+                                  Qt::CaseSensitivity sensitivity) const
+{
+    for (const QString &category : categories) {
+        if (category.compare(value, sensitivity) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool MainWindow::isReservedCategoryName(const QString &name) const
+{
+    const QString trimmed = name.trimmed();
+    if (trimmed.isEmpty()) {
+        return false;
+    }
+    if (trimmed.compare(QStringLiteral("Todas"), Qt::CaseInsensitive) == 0) {
+        return true;
+    }
+    if (trimmed.compare(QStringLiteral("Sem categoria"), Qt::CaseInsensitive) == 0) {
+        return true;
+    }
+    if (trimmed.compare(kFilterAllKey, Qt::CaseInsensitive) == 0) {
+        return true;
+    }
+    if (trimmed.compare(kFilterUncategorizedKey, Qt::CaseInsensitive) == 0) {
+        return true;
+    }
+    return false;
+}
+
+QString MainWindow::normalizeCategory(const QString &name) const
+{
+    return name.trimmed();
+}
+
+QString MainWindow::selectedCategoryFilterKey() const
+{
+    if (!ui || !ui->categoryFilterCombo) {
+        return kFilterAllKey;
+    }
+
+    const QVariant data = ui->categoryFilterCombo->currentData();
+    if (data.isValid()) {
+        return data.toString();
+    }
+
+    return kFilterAllKey;
+}
+
+void MainWindow::updateCategoryFilterCombo(const QStringList &categories)
+{
+    if (!ui || !ui->categoryFilterCombo) {
+        return;
+    }
+
+    const QString currentKey = ui->categoryFilterCombo->currentData().toString();
+    const QString currentText = ui->categoryFilterCombo->currentText();
+
+    ui->categoryFilterCombo->blockSignals(true);
+    ui->categoryFilterCombo->clear();
+    ui->categoryFilterCombo->addItem(tr("Todas"), kFilterAllKey);
+    ui->categoryFilterCombo->addItem(tr("Sem categoria"), kFilterUncategorizedKey);
+
+    const QStringList normalized = normalizeCategories(categories);
+    for (const QString &category : normalized) {
+        ui->categoryFilterCombo->addItem(category, category);
+    }
+
+    int restoreIndex = ui->categoryFilterCombo->findData(currentKey);
+    if (restoreIndex < 0 && !currentText.isEmpty()) {
+        restoreIndex = ui->categoryFilterCombo->findText(currentText, Qt::MatchFixedString);
+    }
+    if (restoreIndex < 0) {
+        restoreIndex = 0;
+    }
+
+    ui->categoryFilterCombo->setCurrentIndex(restoreIndex);
+    ui->categoryFilterCombo->blockSignals(false);
+}
+
+void MainWindow::handleCategoryFilterChanged(int)
+{
+    loadSoftwareEntries();
+}
+
 bool MainWindow::removeSoftwareEntry(const SoftwareEntry &entry, QString *errorMessage)
 {
     QList<SoftwareEntry> entries;
-    if (!readSoftwareEntries(&entries, errorMessage)) {
+    QStringList categories;
+    if (!readSoftwareEntries(&entries, &categories, errorMessage)) {
         return false;
     }
 
