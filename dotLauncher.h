@@ -10,6 +10,8 @@ class dotLauncher;
 }
 QT_END_NAMESPACE
 
+class QLayout;
+
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -24,6 +26,8 @@ private slots:
 private:
     bool saveSoftwareEntry(const QString &name, const QString &exePath, const QIcon &icon, QString *errorMessage = nullptr);
     QString dataDirectory() const;
+    void loadSoftwareEntries();
+    void clearLayout(QLayout *layout);
 
     Ui::dotLauncher *ui;
 };

@@ -10,15 +10,20 @@
 #include <QFileIconProvider>
 #include <QFileInfo>
 #include <QFormLayout>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
+#include <QLayout>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QProcess>
 #include <QPixmap>
 #include <QPushButton>
+#include <QSize>
+#include <QSizePolicy>
 #include <QStandardPaths>
 #include <QUuid>
 #include <QVBoxLayout>
@@ -30,6 +35,8 @@ MainWindow::MainWindow(QWidget *parent)
     ui->setupUi(this);
 
     connect(ui->pushButton, &QPushButton::clicked, this, &MainWindow::openAddSoftwareDialog);
+
+    loadSoftwareEntries();
 }
 
 MainWindow::~MainWindow()
@@ -143,7 +150,9 @@ void MainWindow::openAddSoftwareDialog()
         dialog.accept();
     });
 
-    dialog.exec();
+    if (dialog.exec() == QDialog::Accepted) {
+        loadSoftwareEntries();
+    }
 }
 
 bool MainWindow::saveSoftwareEntry(const QString &name,
@@ -261,4 +270,143 @@ QString MainWindow::dataDirectory() const
         path = QCoreApplication::applicationDirPath();
     }
     return path;
+}
+
+void MainWindow::loadSoftwareEntries()
+{
+    if (!ui || !ui->gridLayout) {
+        return;
+    }
+
+    clearLayout(ui->gridLayout);
+
+    const QString baseDirPath = dataDirectory();
+    if (baseDirPath.isEmpty()) {
+        return;
+    }
+
+    const QString jsonPath = QDir(baseDirPath).filePath("software.json");
+    if (!QFile::exists(jsonPath)) {
+        return;
+    }
+
+    QFile inputFile(jsonPath);
+    if (!inputFile.open(QIODevice::ReadOnly)) {
+        return;
+    }
+
+    const QByteArray data = inputFile.readAll();
+    inputFile.close();
+
+    QJsonParseError parseError;
+    const QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
+    if (parseError.error != QJsonParseError::NoError) {
+        return;
+    }
+
+    QJsonArray items;
+    if (doc.isArray()) {
+        items = doc.array();
+    } else if (doc.isObject()) {
+        const QJsonObject root = doc.object();
+        const QJsonValue stored = root.value(QStringLiteral("softwares"));
+        if (stored.isArray()) {
+            items = stored.toArray();
+        }
+    }
+
+    const int columns = 5;
+    int index = 0;
+
+    for (const QJsonValue &value : items) {
+        if (!value.isObject()) {
+            continue;
+        }
+
+        const QJsonObject obj = value.toObject();
+        const QString name = obj.value(QStringLiteral("name")).toString().trimmed();
+        const QString exePath = obj.value(QStringLiteral("exePath")).toString();
+        const QString iconValue = obj.value(QStringLiteral("icon")).toString();
+
+        if (name.isEmpty()) {
+            continue;
+        }
+
+        auto *frame = new QFrame(ui->scrollAreaWidgetContents);
+        frame->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        frame->setMinimumSize(QSize(140, 200));
+        frame->setFrameShape(QFrame::StyledPanel);
+        frame->setFrameShadow(QFrame::Raised);
+
+        auto *layout = new QVBoxLayout(frame);
+        layout->setSpacing(6);
+        layout->setContentsMargins(8, 8, 8, 8);
+
+        auto *iconLabel = new QLabel(frame);
+        iconLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        iconLabel->setMinimumSize(QSize(120, 120));
+        iconLabel->setFrameShape(QFrame::Box);
+        iconLabel->setAlignment(Qt::AlignCenter);
+        iconLabel->setScaledContents(true);
+
+        QString iconPath = iconValue;
+        if (!iconValue.isEmpty() && QFileInfo(iconValue).isRelative()) {
+            iconPath = QDir(baseDirPath).filePath(iconValue);
+        }
+
+        QPixmap pixmap(iconPath);
+        if (pixmap.isNull()) {
+            iconLabel->setText(tr("Sem icone"));
+        } else {
+            iconLabel->setPixmap(pixmap.scaled(iconLabel->size(),
+                                               Qt::KeepAspectRatio,
+                                               Qt::SmoothTransformation));
+        }
+
+        auto *titleLabel = new QLabel(name, frame);
+        titleLabel->setAlignment(Qt::AlignCenter);
+
+        auto *openButton = new QPushButton(tr("Abrir"), frame);
+
+        layout->addWidget(iconLabel);
+        layout->addWidget(titleLabel);
+        layout->addWidget(openButton);
+
+        connect(openButton, &QPushButton::clicked, this, [this, exePath]() {
+            if (exePath.isEmpty() || !QFile::exists(exePath)) {
+                QMessageBox::warning(this, tr("Executavel ausente"), tr("Caminho do .exe nao encontrado."));
+                return;
+            }
+
+            if (!QProcess::startDetached(exePath)) {
+                QMessageBox::warning(this, tr("Falha ao abrir"), tr("Nao foi possivel abrir o executavel."));
+            }
+        });
+
+        const int row = index / columns;
+        const int col = index % columns;
+        ui->gridLayout->addWidget(frame, row, col);
+        ++index;
+    }
+
+    for (int col = 0; col < columns; ++col) {
+        ui->gridLayout->setColumnStretch(col, 1);
+    }
+}
+
+void MainWindow::clearLayout(QLayout *layout)
+{
+    if (!layout) {
+        return;
+    }
+
+    while (QLayoutItem *item = layout->takeAt(0)) {
+        if (item->widget()) {
+            item->widget()->deleteLater();
+        }
+        if (item->layout()) {
+            clearLayout(item->layout());
+        }
+        delete item;
+    }
 }
