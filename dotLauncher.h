@@ -37,12 +37,14 @@ private:
     bool appendSoftwareEntry(const SoftwareEntry &entry, QString *errorMessage = nullptr);
     bool readSoftwareEntries(QList<SoftwareEntry> *entries, QString *errorMessage = nullptr) const;
     bool writeSoftwareEntries(const QList<SoftwareEntry> &entries, QString *errorMessage = nullptr) const;
+    bool removeSoftwareEntry(const SoftwareEntry &entry, QString *errorMessage = nullptr);
     QString dataDirectory() const;
     QString jsonFilePath() const;
     QString iconsDirectoryPath() const;
     bool ensureDirectory(const QString &path, const QString &failureMessage, QString *errorMessage) const;
     bool saveIconFile(const QIcon &icon, QString *relativePath, QString *errorMessage) const;
     QString resolveIconPath(const QString &iconValue, const QString &baseDirPath) const;
+    bool deleteIconIfLocal(const SoftwareEntry &entry, const QString &baseDirPath, QString *errorMessage = nullptr) const;
     QFrame *createSoftwareCard(const SoftwareEntry &entry, const QString &baseDirPath);
     void setupCardSizeControls();
     void handleCardSizeChanged(int value);

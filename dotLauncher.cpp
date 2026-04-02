@@ -27,6 +27,7 @@
 #include <QSize>
 #include <QSizePolicy>
 #include <QStandardPaths>
+#include <QStyle>
 #include <QTimer>
 #include <QtMath>
 #include <QUuid>
@@ -316,6 +317,41 @@ bool MainWindow::writeSoftwareEntries(const QList<SoftwareEntry> &entries, QStri
     return true;
 }
 
+bool MainWindow::removeSoftwareEntry(const SoftwareEntry &entry, QString *errorMessage)
+{
+    QList<SoftwareEntry> entries;
+    if (!readSoftwareEntries(&entries, errorMessage)) {
+        return false;
+    }
+
+    int removeIndex = -1;
+    for (int i = 0; i < entries.size(); ++i) {
+        const SoftwareEntry &current = entries.at(i);
+        if (current.name == entry.name
+            && current.exePath == entry.exePath
+            && current.iconPath == entry.iconPath) {
+            removeIndex = i;
+            break;
+        }
+    }
+
+    if (removeIndex < 0) {
+        return true;
+    }
+
+    entries.removeAt(removeIndex);
+    if (!writeSoftwareEntries(entries, errorMessage)) {
+        return false;
+    }
+
+    const QString baseDirPath = dataDirectory();
+    if (!baseDirPath.isEmpty()) {
+        deleteIconIfLocal(entry, baseDirPath, nullptr);
+    }
+
+    return true;
+}
+
 QString MainWindow::jsonFilePath() const
 {
     const QString baseDirPath = dataDirectory();
@@ -505,6 +541,38 @@ QString MainWindow::resolveIconPath(const QString &iconValue, const QString &bas
     return iconValue;
 }
 
+bool MainWindow::deleteIconIfLocal(const SoftwareEntry &entry, const QString &baseDirPath, QString *errorMessage) const
+{
+    if (entry.iconPath.isEmpty() || baseDirPath.isEmpty()) {
+        return true;
+    }
+
+    const bool isRelative = QFileInfo(entry.iconPath).isRelative();
+    QString absolutePath = entry.iconPath;
+    if (isRelative) {
+        absolutePath = QDir(baseDirPath).filePath(entry.iconPath);
+    }
+
+    const QString baseAbsolute = QDir(baseDirPath).absolutePath();
+    const QString targetAbsolute = QFileInfo(absolutePath).absoluteFilePath();
+    if (!targetAbsolute.startsWith(baseAbsolute + QDir::separator())) {
+        return true;
+    }
+
+    if (!QFile::exists(targetAbsolute)) {
+        return true;
+    }
+
+    if (!QFile::remove(targetAbsolute)) {
+        if (errorMessage) {
+            *errorMessage = tr("Nao foi possivel remover o icone.");
+        }
+        return false;
+    }
+
+    return true;
+}
+
 QFrame *MainWindow::createSoftwareCard(const SoftwareEntry &entry, const QString &baseDirPath)
 {
     if (!ui || !ui->scrollAreaWidgetContents) {
@@ -555,10 +623,23 @@ QFrame *MainWindow::createSoftwareCard(const SoftwareEntry &entry, const QString
     titleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
     auto *openButton = new QPushButton(tr("Abrir"), frame);
+    openButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
-    layout->addWidget(iconLabel);
+    auto *deleteButton = new QPushButton(frame);
+    deleteButton->setToolTip(tr("Remover do launcher"));
+    deleteButton->setIcon(style()->standardIcon(QStyle::SP_TrashIcon));
+    deleteButton->setFixedSize(QSize(28, 28));
+
+    auto *buttonRow = new QWidget(frame);
+    auto *buttonLayout = new QHBoxLayout(buttonRow);
+    buttonLayout->setContentsMargins(0, 0, 0, 0);
+    buttonLayout->setSpacing(6);
+    buttonLayout->addWidget(openButton);
+    buttonLayout->addWidget(deleteButton);
+
+    layout->addWidget(iconLabel, 0, Qt::AlignHCenter);
     layout->addWidget(titleLabel);
-    layout->addWidget(openButton);
+    layout->addWidget(buttonRow);
 
     const QString exePath = entry.exePath;
     connect(openButton, &QPushButton::clicked, this, [this, exePath]() {
@@ -570,6 +651,27 @@ QFrame *MainWindow::createSoftwareCard(const SoftwareEntry &entry, const QString
         if (!QProcess::startDetached(exePath)) {
             QMessageBox::warning(this, tr("Falha ao abrir"), tr("Nao foi possivel abrir o executavel."));
         }
+    });
+
+    connect(deleteButton, &QPushButton::clicked, this, [this, entry]() {
+        const auto response = QMessageBox::question(
+            this,
+            tr("Remover software"),
+            tr("Deseja remover \"%1\" do launcher?").arg(entry.name));
+        if (response != QMessageBox::Yes) {
+            return;
+        }
+
+        QString errorMessage;
+        if (!removeSoftwareEntry(entry, &errorMessage)) {
+            if (errorMessage.isEmpty()) {
+                errorMessage = tr("Nao foi possivel remover o software.");
+            }
+            QMessageBox::warning(this, tr("Erro ao remover"), errorMessage);
+            return;
+        }
+
+        loadSoftwareEntries();
     });
 
     return frame;
