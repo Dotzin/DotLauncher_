@@ -18,15 +18,32 @@
 #include <QLabel>
 #include <QLayout>
 #include <QLineEdit>
+#include <QMargins>
 #include <QMessageBox>
 #include <QProcess>
 #include <QPixmap>
 #include <QPushButton>
+#include <QSlider>
 #include <QSize>
 #include <QSizePolicy>
 #include <QStandardPaths>
+#include <QStyle>
+#include <QTimer>
+#include <QtMath>
 #include <QUuid>
 #include <QVBoxLayout>
+
+namespace {
+constexpr int kBaseCardWidth = 140;
+constexpr int kBaseCardHeight = 200;
+constexpr int kBaseIconSize = 110;
+constexpr int kDefaultColumnCount = 5;
+constexpr int kMinCardWidth = 120;
+constexpr int kMaxCardWidth = 220;
+constexpr int kCardWidthStep = 5;
+constexpr int kCardWidthPageStep = 10;
+constexpr int kCardWidthTickInterval = 20;
+} // namespace
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -34,9 +51,11 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
+    setupCardSizeControls();
+
     connect(ui->pushButton, &QPushButton::clicked, this, &MainWindow::openAddSoftwareDialog);
 
-    loadSoftwareEntries();
+    QTimer::singleShot(0, this, [this]() { loadSoftwareEntries(); });
 }
 
 MainWindow::~MainWindow()
@@ -298,6 +317,41 @@ bool MainWindow::writeSoftwareEntries(const QList<SoftwareEntry> &entries, QStri
     return true;
 }
 
+bool MainWindow::removeSoftwareEntry(const SoftwareEntry &entry, QString *errorMessage)
+{
+    QList<SoftwareEntry> entries;
+    if (!readSoftwareEntries(&entries, errorMessage)) {
+        return false;
+    }
+
+    int removeIndex = -1;
+    for (int i = 0; i < entries.size(); ++i) {
+        const SoftwareEntry &current = entries.at(i);
+        if (current.name == entry.name
+            && current.exePath == entry.exePath
+            && current.iconPath == entry.iconPath) {
+            removeIndex = i;
+            break;
+        }
+    }
+
+    if (removeIndex < 0) {
+        return true;
+    }
+
+    entries.removeAt(removeIndex);
+    if (!writeSoftwareEntries(entries, errorMessage)) {
+        return false;
+    }
+
+    const QString baseDirPath = dataDirectory();
+    if (!baseDirPath.isEmpty()) {
+        deleteIconIfLocal(entry, baseDirPath, nullptr);
+    }
+
+    return true;
+}
+
 QString MainWindow::jsonFilePath() const
 {
     const QString baseDirPath = dataDirectory();
@@ -386,6 +440,85 @@ bool MainWindow::saveIconFile(const QIcon &icon, QString *relativePath, QString 
     return true;
 }
 
+void MainWindow::setupCardSizeControls()
+{
+    if (!ui || !ui->cardSizeSlider) {
+        m_cardWidth = kBaseCardWidth;
+        return;
+    }
+
+    ui->cardSizeSlider->setMinimum(kMinCardWidth);
+    ui->cardSizeSlider->setMaximum(kMaxCardWidth);
+    ui->cardSizeSlider->setSingleStep(kCardWidthStep);
+    ui->cardSizeSlider->setPageStep(kCardWidthPageStep);
+    ui->cardSizeSlider->setTickPosition(QSlider::TicksBelow);
+    ui->cardSizeSlider->setTickInterval(kCardWidthTickInterval);
+
+    m_cardWidth = ui->cardSizeSlider->value();
+    updateCardSizeLabel(m_cardWidth);
+
+    connect(ui->cardSizeSlider, &QSlider::valueChanged, this, &MainWindow::handleCardSizeChanged);
+}
+
+void MainWindow::handleCardSizeChanged(int value)
+{
+    m_cardWidth = value;
+    updateCardSizeLabel(value);
+    loadSoftwareEntries();
+}
+
+int MainWindow::cardWidth() const
+{
+    return qBound(kMinCardWidth, m_cardWidth, kMaxCardWidth);
+}
+
+int MainWindow::cardHeight() const
+{
+    const double ratio = static_cast<double>(kBaseCardHeight) / static_cast<double>(kBaseCardWidth);
+    return qRound(cardWidth() * ratio);
+}
+
+int MainWindow::iconSize() const
+{
+    const double ratio = static_cast<double>(kBaseIconSize) / static_cast<double>(kBaseCardWidth);
+    return qRound(cardWidth() * ratio);
+}
+
+int MainWindow::calculateColumnCount(int cardWidth) const
+{
+    if (!ui || !ui->scrollArea || !ui->gridLayout) {
+        return kDefaultColumnCount;
+    }
+
+    const int viewportWidth = ui->scrollArea->viewport()->width();
+    if (viewportWidth <= 0) {
+        return kDefaultColumnCount;
+    }
+
+    const QMargins margins = ui->gridLayout->contentsMargins();
+    const int availableWidth = viewportWidth - margins.left() - margins.right();
+    const int spacing = ui->gridLayout->spacing();
+    if (availableWidth <= 0) {
+        return kDefaultColumnCount;
+    }
+
+    const int columnWidth = cardWidth + spacing;
+    if (columnWidth <= 0) {
+        return kDefaultColumnCount;
+    }
+
+    return qMax(1, (availableWidth + spacing) / columnWidth);
+}
+
+void MainWindow::updateCardSizeLabel(int value)
+{
+    if (!ui || !ui->cardSizeValueLabel) {
+        return;
+    }
+
+    ui->cardSizeValueLabel->setText(QString::number(value));
+}
+
 QString MainWindow::dataDirectory() const
 {
     QString path = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
@@ -408,6 +541,38 @@ QString MainWindow::resolveIconPath(const QString &iconValue, const QString &bas
     return iconValue;
 }
 
+bool MainWindow::deleteIconIfLocal(const SoftwareEntry &entry, const QString &baseDirPath, QString *errorMessage) const
+{
+    if (entry.iconPath.isEmpty() || baseDirPath.isEmpty()) {
+        return true;
+    }
+
+    const bool isRelative = QFileInfo(entry.iconPath).isRelative();
+    QString absolutePath = entry.iconPath;
+    if (isRelative) {
+        absolutePath = QDir(baseDirPath).filePath(entry.iconPath);
+    }
+
+    const QString baseAbsolute = QDir(baseDirPath).absolutePath();
+    const QString targetAbsolute = QFileInfo(absolutePath).absoluteFilePath();
+    if (!targetAbsolute.startsWith(baseAbsolute + QDir::separator())) {
+        return true;
+    }
+
+    if (!QFile::exists(targetAbsolute)) {
+        return true;
+    }
+
+    if (!QFile::remove(targetAbsolute)) {
+        if (errorMessage) {
+            *errorMessage = tr("Nao foi possivel remover o icone.");
+        }
+        return false;
+    }
+
+    return true;
+}
+
 QFrame *MainWindow::createSoftwareCard(const SoftwareEntry &entry, const QString &baseDirPath)
 {
     if (!ui || !ui->scrollAreaWidgetContents) {
@@ -418,9 +583,12 @@ QFrame *MainWindow::createSoftwareCard(const SoftwareEntry &entry, const QString
         return nullptr;
     }
 
+    const QSize cardSize(cardWidth(), cardHeight());
+
     auto *frame = new QFrame(ui->scrollAreaWidgetContents);
-    frame->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    frame->setMinimumSize(QSize(140, 200));
+    frame->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    frame->setMinimumSize(cardSize);
+    frame->setMaximumSize(cardSize);
     frame->setFrameShape(QFrame::StyledPanel);
     frame->setFrameShadow(QFrame::Raised);
 
@@ -428,9 +596,12 @@ QFrame *MainWindow::createSoftwareCard(const SoftwareEntry &entry, const QString
     layout->setSpacing(6);
     layout->setContentsMargins(8, 8, 8, 8);
 
+    const int iconSide = iconSize();
+
     auto *iconLabel = new QLabel(frame);
-    iconLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    iconLabel->setMinimumSize(QSize(120, 120));
+    iconLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    iconLabel->setMinimumSize(QSize(iconSide, iconSide));
+    iconLabel->setMaximumSize(QSize(iconSide, iconSide));
     iconLabel->setFrameShape(QFrame::Box);
     iconLabel->setAlignment(Qt::AlignCenter);
     iconLabel->setScaledContents(true);
@@ -446,13 +617,29 @@ QFrame *MainWindow::createSoftwareCard(const SoftwareEntry &entry, const QString
     }
 
     auto *titleLabel = new QLabel(entry.name, frame);
-    titleLabel->setAlignment(Qt::AlignCenter);
+    QFont titleFont = titleLabel->font();
+    titleFont.setPointSizeF(titleFont.pointSizeF() + 2.0);
+    titleLabel->setFont(titleFont);
+    titleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
     auto *openButton = new QPushButton(tr("Abrir"), frame);
+    openButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
-    layout->addWidget(iconLabel);
+    auto *deleteButton = new QPushButton(frame);
+    deleteButton->setToolTip(tr("Remover do launcher"));
+    deleteButton->setIcon(style()->standardIcon(QStyle::SP_TrashIcon));
+    deleteButton->setFixedSize(QSize(28, 28));
+
+    auto *buttonRow = new QWidget(frame);
+    auto *buttonLayout = new QHBoxLayout(buttonRow);
+    buttonLayout->setContentsMargins(0, 0, 0, 0);
+    buttonLayout->setSpacing(6);
+    buttonLayout->addWidget(openButton);
+    buttonLayout->addWidget(deleteButton);
+
+    layout->addWidget(iconLabel, 0, Qt::AlignHCenter);
     layout->addWidget(titleLabel);
-    layout->addWidget(openButton);
+    layout->addWidget(buttonRow);
 
     const QString exePath = entry.exePath;
     connect(openButton, &QPushButton::clicked, this, [this, exePath]() {
@@ -466,6 +653,27 @@ QFrame *MainWindow::createSoftwareCard(const SoftwareEntry &entry, const QString
         }
     });
 
+    connect(deleteButton, &QPushButton::clicked, this, [this, entry]() {
+        const auto response = QMessageBox::question(
+            this,
+            tr("Remover software"),
+            tr("Deseja remover \"%1\" do launcher?").arg(entry.name));
+        if (response != QMessageBox::Yes) {
+            return;
+        }
+
+        QString errorMessage;
+        if (!removeSoftwareEntry(entry, &errorMessage)) {
+            if (errorMessage.isEmpty()) {
+                errorMessage = tr("Nao foi possivel remover o software.");
+            }
+            QMessageBox::warning(this, tr("Erro ao remover"), errorMessage);
+            return;
+        }
+
+        loadSoftwareEntries();
+    });
+
     return frame;
 }
 
@@ -475,8 +683,9 @@ void MainWindow::configureGridColumns(int columns)
         return;
     }
 
-    for (int col = 0; col < columns; ++col) {
-        ui->gridLayout->setColumnStretch(col, 1);
+    const int maxColumns = qMax(columns, 12);
+    for (int col = 0; col < maxColumns; ++col) {
+        ui->gridLayout->setColumnStretch(col, col < columns ? 1 : 0);
     }
 }
 
@@ -498,7 +707,7 @@ void MainWindow::loadSoftwareEntries()
         return;
     }
 
-    constexpr int kColumns = 5;
+    const int columns = calculateColumnCount(cardWidth());
     int index = 0;
 
     for (const SoftwareEntry &entry : entries) {
@@ -507,13 +716,13 @@ void MainWindow::loadSoftwareEntries()
             continue;
         }
 
-        const int row = index / kColumns;
-        const int col = index % kColumns;
+        const int row = index / columns;
+        const int col = index % columns;
         ui->gridLayout->addWidget(frame, row, col);
         ++index;
     }
 
-    configureGridColumns(kColumns);
+    configureGridColumns(columns);
 }
 
 void MainWindow::clearLayout(QLayout *layout)
