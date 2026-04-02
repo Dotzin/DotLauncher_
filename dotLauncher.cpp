@@ -2,6 +2,8 @@
 #include "ui_dotLauncher.h"
 
 #include <QCoreApplication>
+#include <QAbstractItemView>
+#include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
@@ -12,12 +14,14 @@
 #include <QFormLayout>
 #include <QFrame>
 #include <QHBoxLayout>
+#include <QInputDialog>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
 #include <QLayout>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMargins>
 #include <QMessageBox>
 #include <QProcess>
