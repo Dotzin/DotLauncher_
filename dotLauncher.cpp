@@ -199,21 +199,34 @@ bool MainWindow::saveSoftwareEntry(const QString &name,
 bool MainWindow::appendSoftwareEntry(const SoftwareEntry &entry, QString *errorMessage)
 {
     QList<SoftwareEntry> entries;
-    if (!readSoftwareEntries(&entries, errorMessage)) {
+    QStringList categories;
+    if (!readSoftwareEntries(&entries, &categories, errorMessage)) {
         return false;
     }
 
     entries.append(entry);
-    return writeSoftwareEntries(entries, errorMessage);
+    const QString normalizedCategory = normalizeCategory(entry.category);
+    if (!normalizedCategory.isEmpty()) {
+        categories.append(normalizedCategory);
+    }
+    categories = normalizeCategories(categories);
+    return writeSoftwareEntries(entries, categories, errorMessage);
 }
 
-bool MainWindow::readSoftwareEntries(QList<SoftwareEntry> *entries, QString *errorMessage) const
+bool MainWindow::readSoftwareEntries(QList<SoftwareEntry> *entries,
+                                     QStringList *categories,
+                                     QString *errorMessage) const
 {
-    if (!entries) {
+    if (!entries && !categories) {
         return false;
     }
 
-    entries->clear();
+    if (entries) {
+        entries->clear();
+    }
+    if (categories) {
+        categories->clear();
+    }
 
     const QString jsonPath = jsonFilePath();
     if (jsonPath.isEmpty()) {
@@ -247,6 +260,7 @@ bool MainWindow::readSoftwareEntries(QList<SoftwareEntry> *entries, QString *err
     }
 
     QJsonArray items;
+    QStringList loadedCategories;
     if (doc.isArray()) {
         items = doc.array();
     } else if (doc.isObject()) {
@@ -254,6 +268,16 @@ bool MainWindow::readSoftwareEntries(QList<SoftwareEntry> *entries, QString *err
         const QJsonValue stored = root.value(QStringLiteral("softwares"));
         if (stored.isArray()) {
             items = stored.toArray();
+        }
+        const QJsonValue categoriesValue = root.value(QStringLiteral("categories"));
+        if (categoriesValue.isArray()) {
+            const QJsonArray categoryArray = categoriesValue.toArray();
+            for (const QJsonValue &categoryValue : categoryArray) {
+                const QString category = categoryValue.toString().trimmed();
+                if (!category.isEmpty()) {
+                    loadedCategories.append(category);
+                }
+            }
         }
     }
 
@@ -267,18 +291,31 @@ bool MainWindow::readSoftwareEntries(QList<SoftwareEntry> *entries, QString *err
         entry.name = obj.value(QStringLiteral("name")).toString().trimmed();
         entry.exePath = obj.value(QStringLiteral("exePath")).toString();
         entry.iconPath = obj.value(QStringLiteral("icon")).toString();
+        entry.category = obj.value(QStringLiteral("category")).toString().trimmed();
 
         if (entry.name.isEmpty()) {
             continue;
         }
 
-        entries->append(entry);
+        if (!entry.category.isEmpty()) {
+            loadedCategories.append(entry.category);
+        }
+
+        if (entries) {
+            entries->append(entry);
+        }
+    }
+
+    if (categories) {
+        *categories = normalizeCategories(loadedCategories);
     }
 
     return true;
 }
 
-bool MainWindow::writeSoftwareEntries(const QList<SoftwareEntry> &entries, QString *errorMessage) const
+bool MainWindow::writeSoftwareEntries(const QList<SoftwareEntry> &entries,
+                                      const QStringList &categories,
+                                      QString *errorMessage) const
 {
     const QString baseDirPath = dataDirectory();
     if (baseDirPath.isEmpty()) {
@@ -302,10 +339,23 @@ bool MainWindow::writeSoftwareEntries(const QList<SoftwareEntry> &entries, QStri
         obj.insert(QStringLiteral("name"), entry.name);
         obj.insert(QStringLiteral("exePath"), entry.exePath);
         obj.insert(QStringLiteral("icon"), entry.iconPath);
+        if (!entry.category.trimmed().isEmpty()) {
+            obj.insert(QStringLiteral("category"), entry.category.trimmed());
+        }
         items.append(obj);
     }
 
     QJsonObject root;
+    const QStringList normalizedCategories = normalizeCategories(categories);
+    if (!normalizedCategories.isEmpty()) {
+        QJsonArray categoryArray;
+        for (const QString &category : normalizedCategories) {
+            if (!category.trimmed().isEmpty()) {
+                categoryArray.append(category);
+            }
+        }
+        root.insert(QStringLiteral("categories"), categoryArray);
+    }
     root.insert(QStringLiteral("softwares"), items);
 
     const QString jsonPath = jsonFilePath();
@@ -346,7 +396,7 @@ bool MainWindow::removeSoftwareEntry(const SoftwareEntry &entry, QString *errorM
     }
 
     entries.removeAt(removeIndex);
-    if (!writeSoftwareEntries(entries, errorMessage)) {
+    if (!writeSoftwareEntries(entries, categories, errorMessage)) {
         return false;
     }
 
