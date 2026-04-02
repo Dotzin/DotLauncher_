@@ -60,6 +60,15 @@ MainWindow::MainWindow(QWidget *parent)
     setupCardSizeControls();
 
     connect(ui->pushButton, &QPushButton::clicked, this, &MainWindow::openAddSoftwareDialog);
+    if (ui->categoryFilterCombo) {
+        connect(ui->categoryFilterCombo,
+                QOverload<int>::of(&QComboBox::currentIndexChanged),
+                this,
+                &MainWindow::handleCategoryFilterChanged);
+    }
+    if (ui->manageCategoriesButton) {
+        connect(ui->manageCategoriesButton, &QPushButton::clicked, this, &MainWindow::openManageCategoriesDialog);
+    }
 
     QTimer::singleShot(0, this, [this]() { loadSoftwareEntries(); });
 }
@@ -1012,6 +1021,15 @@ QFrame *MainWindow::createSoftwareCard(const SoftwareEntry &entry, const QString
     titleLabel->setFont(titleFont);
     titleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
+    const QString categoryText = normalizeCategory(entry.category);
+    auto *categoryLabel = new QLabel(frame);
+    QFont categoryFont = categoryLabel->font();
+    categoryFont.setPointSizeF(qMax(6.0, categoryFont.pointSizeF() - 1.0));
+    categoryLabel->setFont(categoryFont);
+    categoryLabel->setText(categoryText.isEmpty() ? tr("Sem categoria") : categoryText);
+    categoryLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    categoryLabel->setStyleSheet(QStringLiteral("color: #6e6e6e;"));
+
     auto *openButton = new QPushButton(tr("Abrir"), frame);
     openButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
@@ -1029,6 +1047,7 @@ QFrame *MainWindow::createSoftwareCard(const SoftwareEntry &entry, const QString
 
     layout->addWidget(iconLabel, 0, Qt::AlignHCenter);
     layout->addWidget(titleLabel);
+    layout->addWidget(categoryLabel);
     layout->addWidget(buttonRow);
 
     const QString exePath = entry.exePath;
@@ -1088,9 +1107,12 @@ void MainWindow::loadSoftwareEntries()
     clearLayout(ui->gridLayout);
 
     QList<SoftwareEntry> entries;
-    if (!readSoftwareEntries(&entries)) {
+    QStringList categories;
+    if (!readSoftwareEntries(&entries, &categories)) {
         return;
     }
+
+    updateCategoryFilterCombo(categories);
 
     const QString baseDirPath = dataDirectory();
     if (baseDirPath.isEmpty()) {
@@ -1099,8 +1121,20 @@ void MainWindow::loadSoftwareEntries()
 
     const int columns = calculateColumnCount(cardWidth());
     int index = 0;
+    const QString filterKey = selectedCategoryFilterKey();
 
     for (const SoftwareEntry &entry : entries) {
+        const QString entryCategory = normalizeCategory(entry.category);
+        if (filterKey == kFilterUncategorizedKey) {
+            if (!entryCategory.isEmpty()) {
+                continue;
+            }
+        } else if (filterKey != kFilterAllKey) {
+            if (entryCategory.compare(filterKey, Qt::CaseInsensitive) != 0) {
+                continue;
+            }
+        }
+
         QFrame *frame = createSoftwareCard(entry, baseDirPath);
         if (!frame) {
             continue;
