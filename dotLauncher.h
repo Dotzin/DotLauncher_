@@ -15,6 +15,7 @@ QT_END_NAMESPACE
 
 class QLayout;
 class QFrame;
+class QWidget;
 
 class MainWindow : public QMainWindow
 {
@@ -66,6 +67,7 @@ private:
     QString resolveIconPath(const QString &iconValue, const QString &baseDirPath) const;
     bool deleteIconIfLocal(const SoftwareEntry &entry, const QString &baseDirPath, QString *errorMessage = nullptr) const;
     QFrame *createSoftwareCard(const SoftwareEntry &entry, const QString &baseDirPath);
+    QWidget *createCategoryHeader(const QString &title);
     void setupCardSizeControls();
     void handleCardSizeChanged(int value);
     int cardWidth() const;

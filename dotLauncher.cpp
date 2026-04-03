@@ -14,6 +14,7 @@
 #include <QFormLayout>
 #include <QFrame>
 #include <QHBoxLayout>
+#include <QHash>
 #include <QInputDialog>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -25,7 +26,11 @@
 #include <QMargins>
 #include <QMessageBox>
 #include <QProcess>
+#include <QPainter>
+#include <QPalette>
+#include <QPen>
 #include <QPixmap>
+#include <QPolygon>
 #include <QPushButton>
 #include <QSlider>
 #include <QSize>
@@ -49,6 +54,37 @@ constexpr int kCardWidthPageStep = 10;
 constexpr int kCardWidthTickInterval = 20;
 const QString kFilterAllKey = QStringLiteral("__all__");
 const QString kFilterUncategorizedKey = QStringLiteral("__uncategorized__");
+
+QIcon buildPencilIcon(const QWidget *referenceWidget)
+{
+    QIcon icon = QIcon::fromTheme(QStringLiteral("document-edit"));
+    if (!icon.isNull()) {
+        return icon;
+    }
+
+    constexpr int kSize = 16;
+    QPixmap pixmap(kSize, kSize);
+    pixmap.fill(Qt::transparent);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+
+    const QColor color = referenceWidget
+        ? referenceWidget->palette().color(QPalette::Text)
+        : QColor(60, 60, 60);
+
+    QPen pen(color, 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+    painter.setPen(pen);
+    painter.drawLine(QPoint(3, 13), QPoint(13, 3));
+
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(color);
+    QPolygon tip;
+    tip << QPoint(13, 3) << QPoint(15, 1) << QPoint(15, 5);
+    painter.drawPolygon(tip);
+
+    return QIcon(pixmap);
+}
 } // namespace
 
 MainWindow::MainWindow(QWidget *parent)
@@ -58,6 +94,12 @@ MainWindow::MainWindow(QWidget *parent)
     ui->setupUi(this);
 
     setupCardSizeControls();
+
+    if (ui->manageCategoriesButton) {
+        ui->manageCategoriesButton->setIcon(buildPencilIcon(this));
+        ui->manageCategoriesButton->setIconSize(QSize(16, 16));
+        ui->manageCategoriesButton->setToolTip(tr("Editar categorias"));
+    }
 
     connect(ui->pushButton, &QPushButton::clicked, this, &MainWindow::openAddSoftwareDialog);
     if (ui->categoryFilterCombo) {
@@ -1086,6 +1128,36 @@ QFrame *MainWindow::createSoftwareCard(const SoftwareEntry &entry, const QString
     return frame;
 }
 
+QWidget *MainWindow::createCategoryHeader(const QString &title)
+{
+    if (!ui || !ui->scrollAreaWidgetContents) {
+        return nullptr;
+    }
+
+    auto *container = new QWidget(ui->scrollAreaWidgetContents);
+    auto *layout = new QHBoxLayout(container);
+    layout->setContentsMargins(0, 8, 0, 0);
+    layout->setSpacing(8);
+
+    auto *label = new QLabel(title, container);
+    QFont font = label->font();
+    font.setBold(true);
+    font.setPointSizeF(font.pointSizeF() + 2.0);
+    label->setFont(font);
+    label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+
+    auto *line = new QFrame(container);
+    line->setFrameShape(QFrame::HLine);
+    line->setFrameShadow(QFrame::Sunken);
+    line->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    line->setFixedHeight(1);
+
+    layout->addWidget(label);
+    layout->addWidget(line);
+
+    return container;
+}
+
 void MainWindow::configureGridColumns(int columns)
 {
     if (!ui || !ui->gridLayout) {
@@ -1120,30 +1192,121 @@ void MainWindow::loadSoftwareEntries()
     }
 
     const int columns = calculateColumnCount(cardWidth());
-    int index = 0;
     const QString filterKey = selectedCategoryFilterKey();
 
+    QHash<QString, QList<SoftwareEntry>> groupedEntries;
+    QHash<QString, QString> displayNames;
+
     for (const SoftwareEntry &entry : entries) {
-        const QString entryCategory = normalizeCategory(entry.category);
-        if (filterKey == kFilterUncategorizedKey) {
-            if (!entryCategory.isEmpty()) {
+        const QString normalized = normalizeCategory(entry.category);
+        const QString key = normalized.isEmpty() ? kFilterUncategorizedKey : normalized.toLower();
+        groupedEntries[key].append(entry);
+        if (!displayNames.contains(key)) {
+            displayNames.insert(key, normalized.isEmpty() ? tr("Sem categoria") : normalized);
+        }
+    }
+
+    QStringList orderedKeys;
+    const QStringList normalizedCategories = normalizeCategories(categories);
+    for (const QString &category : normalizedCategories) {
+        const QString normalized = normalizeCategory(category);
+        if (normalized.isEmpty()) {
+            continue;
+        }
+        const QString key = normalized.toLower();
+        if (!orderedKeys.contains(key)) {
+            orderedKeys.append(key);
+        }
+        if (!displayNames.contains(key)) {
+            displayNames.insert(key, normalized);
+        }
+    }
+
+    if (filterKey == kFilterAllKey) {
+        for (auto it = groupedEntries.constBegin(); it != groupedEntries.constEnd(); ++it) {
+            if (it.key() == kFilterUncategorizedKey) {
                 continue;
             }
-        } else if (filterKey != kFilterAllKey) {
-            if (entryCategory.compare(filterKey, Qt::CaseInsensitive) != 0) {
-                continue;
+            if (!orderedKeys.contains(it.key())) {
+                orderedKeys.append(it.key());
+                if (!displayNames.contains(it.key()) && !it.value().isEmpty()) {
+                    const QString fallback = normalizeCategory(it.value().first().category);
+                    if (!fallback.isEmpty()) {
+                        displayNames.insert(it.key(), fallback);
+                    }
+                }
             }
         }
 
-        QFrame *frame = createSoftwareCard(entry, baseDirPath);
-        if (!frame) {
+        if (groupedEntries.contains(kFilterUncategorizedKey)
+            && !groupedEntries.value(kFilterUncategorizedKey).isEmpty()) {
+            orderedKeys.append(kFilterUncategorizedKey);
+            if (!displayNames.contains(kFilterUncategorizedKey)) {
+                displayNames.insert(kFilterUncategorizedKey, tr("Sem categoria"));
+            }
+        }
+    } else if (filterKey == kFilterUncategorizedKey) {
+        orderedKeys = QStringList{kFilterUncategorizedKey};
+        if (!displayNames.contains(kFilterUncategorizedKey)) {
+            displayNames.insert(kFilterUncategorizedKey, tr("Sem categoria"));
+        }
+    } else {
+        const QString normalizedFilter = normalizeCategory(filterKey);
+        const QString key = normalizedFilter.toLower();
+        if (!key.isEmpty()) {
+            orderedKeys = QStringList{key};
+            if (!displayNames.contains(key)) {
+                QString display = normalizedFilter;
+                for (const QString &category : normalizedCategories) {
+                    if (category.compare(normalizedFilter, Qt::CaseInsensitive) == 0) {
+                        display = category;
+                        break;
+                    }
+                }
+                if (!display.isEmpty()) {
+                    displayNames.insert(key, display);
+                }
+            }
+        }
+    }
+
+    int row = 0;
+    for (const QString &key : orderedKeys) {
+        const bool isUncategorized = (key == kFilterUncategorizedKey);
+        const QList<SoftwareEntry> categoryEntries = groupedEntries.value(key);
+        const bool hasEntries = !categoryEntries.isEmpty();
+
+        if (filterKey == kFilterAllKey && isUncategorized && !hasEntries) {
             continue;
         }
 
-        const int row = index / columns;
-        const int col = index % columns;
-        ui->gridLayout->addWidget(frame, row, col);
-        ++index;
+        const QString headerText = displayNames.value(
+            key,
+            isUncategorized ? tr("Sem categoria") : key);
+        QWidget *header = createCategoryHeader(headerText);
+        if (header) {
+            ui->gridLayout->addWidget(header, row, 0, 1, columns);
+            ++row;
+        }
+
+        int col = 0;
+        for (const SoftwareEntry &entry : categoryEntries) {
+            QFrame *frame = createSoftwareCard(entry, baseDirPath);
+            if (!frame) {
+                continue;
+            }
+
+            ui->gridLayout->addWidget(frame, row, col);
+            ++col;
+            if (col >= columns) {
+                col = 0;
+                ++row;
+            }
+        }
+
+        if (col != 0) {
+            ++row;
+        }
     }
 
     configureGridColumns(columns);
