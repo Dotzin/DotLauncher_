@@ -1134,6 +1134,12 @@ QFrame *MainWindow::createSoftwareCard(const SoftwareEntry &entry, const QString
     auto *openButton = new QPushButton(tr("Abrir"), frame);
     openButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
+    auto *editCategoryButton = new QPushButton(frame);
+    editCategoryButton->setToolTip(tr("Editar categoria"));
+    editCategoryButton->setIcon(buildPencilIcon(this));
+    editCategoryButton->setIconSize(QSize(16, 16));
+    editCategoryButton->setFixedSize(QSize(28, 28));
+
     auto *deleteButton = new QPushButton(frame);
     deleteButton->setToolTip(tr("Remover do launcher"));
     deleteButton->setIcon(style()->standardIcon(QStyle::SP_TrashIcon));
@@ -1144,6 +1150,7 @@ QFrame *MainWindow::createSoftwareCard(const SoftwareEntry &entry, const QString
     buttonLayout->setContentsMargins(0, 0, 0, 0);
     buttonLayout->setSpacing(6);
     buttonLayout->addWidget(openButton);
+    buttonLayout->addWidget(editCategoryButton);
     buttonLayout->addWidget(deleteButton);
 
     layout->addWidget(iconLabel, 0, Qt::AlignHCenter);
@@ -1161,6 +1168,10 @@ QFrame *MainWindow::createSoftwareCard(const SoftwareEntry &entry, const QString
         if (!QProcess::startDetached(exePath)) {
             QMessageBox::warning(this, tr("Falha ao abrir"), tr("Nao foi possivel abrir o executavel."));
         }
+    });
+
+    connect(editCategoryButton, &QPushButton::clicked, this, [this, entry]() {
+        openEditCategoryDialog(entry);
     });
 
     connect(deleteButton, &QPushButton::clicked, this, [this, entry]() {
