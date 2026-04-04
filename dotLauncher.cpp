@@ -14,6 +14,7 @@
 #include <QFormLayout>
 #include <QFrame>
 #include <QHBoxLayout>
+#include <QHash>
 #include <QInputDialog>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -25,13 +26,18 @@
 #include <QMargins>
 #include <QMessageBox>
 #include <QProcess>
+#include <QPainter>
+#include <QPalette>
+#include <QPen>
 #include <QPixmap>
+#include <QPolygon>
 #include <QPushButton>
 #include <QSlider>
 #include <QSize>
 #include <QSizePolicy>
 #include <QStandardPaths>
 #include <QStyle>
+#include <QToolButton>
 #include <QTimer>
 #include <QtMath>
 #include <QUuid>
@@ -49,6 +55,37 @@ constexpr int kCardWidthPageStep = 10;
 constexpr int kCardWidthTickInterval = 20;
 const QString kFilterAllKey = QStringLiteral("__all__");
 const QString kFilterUncategorizedKey = QStringLiteral("__uncategorized__");
+
+QIcon buildPencilIcon(const QWidget *referenceWidget)
+{
+    QIcon icon = QIcon::fromTheme(QStringLiteral("document-edit"));
+    if (!icon.isNull()) {
+        return icon;
+    }
+
+    constexpr int kSize = 16;
+    QPixmap pixmap(kSize, kSize);
+    pixmap.fill(Qt::transparent);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+
+    const QColor color = referenceWidget
+        ? referenceWidget->palette().color(QPalette::Text)
+        : QColor(60, 60, 60);
+
+    QPen pen(color, 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+    painter.setPen(pen);
+    painter.drawLine(QPoint(3, 13), QPoint(13, 3));
+
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(color);
+    QPolygon tip;
+    tip << QPoint(13, 3) << QPoint(15, 1) << QPoint(15, 5);
+    painter.drawPolygon(tip);
+
+    return QIcon(pixmap);
+}
 } // namespace
 
 MainWindow::MainWindow(QWidget *parent)
@@ -58,6 +95,12 @@ MainWindow::MainWindow(QWidget *parent)
     ui->setupUi(this);
 
     setupCardSizeControls();
+
+    if (ui->manageCategoriesButton) {
+        ui->manageCategoriesButton->setIcon(buildPencilIcon(this));
+        ui->manageCategoriesButton->setIconSize(QSize(16, 16));
+        ui->manageCategoriesButton->setToolTip(tr("Editar categorias"));
+    }
 
     connect(ui->pushButton, &QPushButton::clicked, this, &MainWindow::openAddSoftwareDialog);
     if (ui->categoryFilterCombo) {
@@ -665,6 +708,28 @@ QString MainWindow::normalizeCategory(const QString &name) const
     return name.trimmed();
 }
 
+bool MainWindow::isCategoryCollapsed(const QString &key) const
+{
+    const QString normalized = normalizeCategory(key).toLower();
+    if (normalized.isEmpty()) {
+        return false;
+    }
+    return m_collapsedCategories.value(normalized, false);
+}
+
+void MainWindow::setCategoryCollapsed(const QString &key, bool collapsed)
+{
+    const QString normalized = normalizeCategory(key).toLower();
+    if (normalized.isEmpty()) {
+        return;
+    }
+    if (collapsed) {
+        m_collapsedCategories.insert(normalized, true);
+    } else {
+        m_collapsedCategories.remove(normalized);
+    }
+}
+
 QString MainWindow::selectedCategoryFilterKey() const
 {
     if (!ui || !ui->categoryFilterCombo) {
@@ -749,6 +814,43 @@ bool MainWindow::removeSoftwareEntry(const SoftwareEntry &entry, QString *errorM
     }
 
     return true;
+}
+
+bool MainWindow::updateSoftwareEntryCategory(const SoftwareEntry &entry,
+                                             const QString &category,
+                                             QString *errorMessage)
+{
+    QList<SoftwareEntry> entries;
+    QStringList categories;
+    if (!readSoftwareEntries(&entries, &categories, errorMessage)) {
+        return false;
+    }
+
+    bool updated = false;
+    const QString normalizedCategory = normalizeCategory(category);
+    for (SoftwareEntry &current : entries) {
+        if (current.name == entry.name
+            && current.exePath == entry.exePath
+            && current.iconPath == entry.iconPath) {
+            current.category = normalizedCategory;
+            updated = true;
+            break;
+        }
+    }
+
+    if (!updated) {
+        if (errorMessage) {
+            *errorMessage = tr("Nao foi possivel localizar o software para editar.");
+        }
+        return false;
+    }
+
+    if (!normalizedCategory.isEmpty()) {
+        categories.append(normalizedCategory);
+    }
+    categories = normalizeCategories(categories);
+
+    return writeSoftwareEntries(entries, categories, errorMessage);
 }
 
 QString MainWindow::jsonFilePath() const
@@ -1033,6 +1135,12 @@ QFrame *MainWindow::createSoftwareCard(const SoftwareEntry &entry, const QString
     auto *openButton = new QPushButton(tr("Abrir"), frame);
     openButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
+    auto *editCategoryButton = new QPushButton(frame);
+    editCategoryButton->setToolTip(tr("Editar categoria"));
+    editCategoryButton->setIcon(buildPencilIcon(this));
+    editCategoryButton->setIconSize(QSize(16, 16));
+    editCategoryButton->setFixedSize(QSize(28, 28));
+
     auto *deleteButton = new QPushButton(frame);
     deleteButton->setToolTip(tr("Remover do launcher"));
     deleteButton->setIcon(style()->standardIcon(QStyle::SP_TrashIcon));
@@ -1043,6 +1151,7 @@ QFrame *MainWindow::createSoftwareCard(const SoftwareEntry &entry, const QString
     buttonLayout->setContentsMargins(0, 0, 0, 0);
     buttonLayout->setSpacing(6);
     buttonLayout->addWidget(openButton);
+    buttonLayout->addWidget(editCategoryButton);
     buttonLayout->addWidget(deleteButton);
 
     layout->addWidget(iconLabel, 0, Qt::AlignHCenter);
@@ -1060,6 +1169,10 @@ QFrame *MainWindow::createSoftwareCard(const SoftwareEntry &entry, const QString
         if (!QProcess::startDetached(exePath)) {
             QMessageBox::warning(this, tr("Falha ao abrir"), tr("Nao foi possivel abrir o executavel."));
         }
+    });
+
+    connect(editCategoryButton, &QPushButton::clicked, this, [this, entry]() {
+        openEditCategoryDialog(entry);
     });
 
     connect(deleteButton, &QPushButton::clicked, this, [this, entry]() {
@@ -1084,6 +1197,121 @@ QFrame *MainWindow::createSoftwareCard(const SoftwareEntry &entry, const QString
     });
 
     return frame;
+}
+
+void MainWindow::openEditCategoryDialog(const SoftwareEntry &entry)
+{
+    QStringList categories;
+    QString errorMessage;
+    if (!readSoftwareEntries(nullptr, &categories, &errorMessage)) {
+        if (errorMessage.isEmpty()) {
+            errorMessage = tr("Nao foi possivel carregar as categorias.");
+        }
+        QMessageBox::warning(this, tr("Categorias"), errorMessage);
+        return;
+    }
+
+    QStringList available = normalizeCategories(categories);
+    const QString currentCategory = normalizeCategory(entry.category);
+    if (!currentCategory.isEmpty()
+        && !containsCategory(available, currentCategory, Qt::CaseInsensitive)) {
+        available.append(currentCategory);
+    }
+    available = normalizeCategories(available);
+
+    QStringList items = available;
+    if (!containsCategory(items, tr("Sem categoria"), Qt::CaseInsensitive)) {
+        items.prepend(tr("Sem categoria"));
+    }
+
+    int currentIndex = 0;
+    for (int i = 0; i < items.size(); ++i) {
+        if (items.at(i).compare(currentCategory, Qt::CaseInsensitive) == 0) {
+            currentIndex = i;
+            break;
+        }
+    }
+
+    bool ok = false;
+    QString selected = QInputDialog::getItem(
+        this,
+        tr("Editar categoria"),
+        tr("Categoria:"),
+        items,
+        currentIndex,
+        true,
+        &ok);
+    if (!ok) {
+        return;
+    }
+
+    QString normalized = normalizeCategory(selected);
+    if (normalized.compare(QStringLiteral("Sem categoria"), Qt::CaseInsensitive) == 0) {
+        normalized.clear();
+    }
+    if (!normalized.isEmpty() && isReservedCategoryName(normalized)) {
+        QMessageBox::warning(
+            this,
+            tr("Categoria invalida"),
+            tr("Escolha um nome diferente de \"Todas\" ou \"Sem categoria\"."));
+        return;
+    }
+
+    QString saveError;
+    if (!updateSoftwareEntryCategory(entry, normalized, &saveError)) {
+        if (saveError.isEmpty()) {
+            saveError = tr("Nao foi possivel atualizar a categoria.");
+        }
+        QMessageBox::warning(this, tr("Erro ao salvar"), saveError);
+        return;
+    }
+
+    loadSoftwareEntries();
+}
+
+QWidget *MainWindow::createCategoryHeader(const QString &title, const QString &key)
+{
+    if (!ui || !ui->scrollAreaWidgetContents) {
+        return nullptr;
+    }
+
+    auto *container = new QWidget(ui->scrollAreaWidgetContents);
+    auto *layout = new QHBoxLayout(container);
+    layout->setContentsMargins(0, 8, 0, 0);
+    layout->setSpacing(8);
+
+    const bool collapsed = isCategoryCollapsed(key);
+
+    auto *toggleButton = new QToolButton(container);
+    toggleButton->setArrowType(collapsed ? Qt::RightArrow : Qt::DownArrow);
+    toggleButton->setAutoRaise(true);
+    toggleButton->setToolTip(collapsed ? tr("Expandir") : tr("Recolher"));
+    toggleButton->setFixedSize(QSize(18, 18));
+
+    auto *label = new QLabel(title, container);
+    QFont font = label->font();
+    font.setBold(true);
+    font.setPointSizeF(font.pointSizeF() + 2.0);
+    label->setFont(font);
+    label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+
+    auto *line = new QFrame(container);
+    line->setFrameShape(QFrame::HLine);
+    line->setFrameShadow(QFrame::Sunken);
+    line->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    line->setFixedHeight(1);
+
+    layout->addWidget(toggleButton);
+    layout->addWidget(label);
+    layout->addWidget(line);
+
+    connect(toggleButton, &QToolButton::clicked, this, [this, key]() {
+        const bool nowCollapsed = isCategoryCollapsed(key);
+        setCategoryCollapsed(key, !nowCollapsed);
+        loadSoftwareEntries();
+    });
+
+    return container;
 }
 
 void MainWindow::configureGridColumns(int columns)
@@ -1120,30 +1348,125 @@ void MainWindow::loadSoftwareEntries()
     }
 
     const int columns = calculateColumnCount(cardWidth());
-    int index = 0;
     const QString filterKey = selectedCategoryFilterKey();
 
+    QHash<QString, QList<SoftwareEntry>> groupedEntries;
+    QHash<QString, QString> displayNames;
+
     for (const SoftwareEntry &entry : entries) {
-        const QString entryCategory = normalizeCategory(entry.category);
-        if (filterKey == kFilterUncategorizedKey) {
-            if (!entryCategory.isEmpty()) {
+        const QString normalized = normalizeCategory(entry.category);
+        const QString key = normalized.isEmpty() ? kFilterUncategorizedKey : normalized.toLower();
+        groupedEntries[key].append(entry);
+        if (!displayNames.contains(key)) {
+            displayNames.insert(key, normalized.isEmpty() ? tr("Sem categoria") : normalized);
+        }
+    }
+
+    QStringList orderedKeys;
+    const QStringList normalizedCategories = normalizeCategories(categories);
+    for (const QString &category : normalizedCategories) {
+        const QString normalized = normalizeCategory(category);
+        if (normalized.isEmpty()) {
+            continue;
+        }
+        const QString key = normalized.toLower();
+        if (!orderedKeys.contains(key)) {
+            orderedKeys.append(key);
+        }
+        if (!displayNames.contains(key)) {
+            displayNames.insert(key, normalized);
+        }
+    }
+
+    if (filterKey == kFilterAllKey) {
+        for (auto it = groupedEntries.constBegin(); it != groupedEntries.constEnd(); ++it) {
+            if (it.key() == kFilterUncategorizedKey) {
                 continue;
             }
-        } else if (filterKey != kFilterAllKey) {
-            if (entryCategory.compare(filterKey, Qt::CaseInsensitive) != 0) {
-                continue;
+            if (!orderedKeys.contains(it.key())) {
+                orderedKeys.append(it.key());
+                if (!displayNames.contains(it.key()) && !it.value().isEmpty()) {
+                    const QString fallback = normalizeCategory(it.value().first().category);
+                    if (!fallback.isEmpty()) {
+                        displayNames.insert(it.key(), fallback);
+                    }
+                }
             }
         }
 
-        QFrame *frame = createSoftwareCard(entry, baseDirPath);
-        if (!frame) {
+        if (groupedEntries.contains(kFilterUncategorizedKey)
+            && !groupedEntries.value(kFilterUncategorizedKey).isEmpty()) {
+            orderedKeys.append(kFilterUncategorizedKey);
+            if (!displayNames.contains(kFilterUncategorizedKey)) {
+                displayNames.insert(kFilterUncategorizedKey, tr("Sem categoria"));
+            }
+        }
+    } else if (filterKey == kFilterUncategorizedKey) {
+        orderedKeys = QStringList{kFilterUncategorizedKey};
+        if (!displayNames.contains(kFilterUncategorizedKey)) {
+            displayNames.insert(kFilterUncategorizedKey, tr("Sem categoria"));
+        }
+    } else {
+        const QString normalizedFilter = normalizeCategory(filterKey);
+        const QString key = normalizedFilter.toLower();
+        if (!key.isEmpty()) {
+            orderedKeys = QStringList{key};
+            if (!displayNames.contains(key)) {
+                QString display = normalizedFilter;
+                for (const QString &category : normalizedCategories) {
+                    if (category.compare(normalizedFilter, Qt::CaseInsensitive) == 0) {
+                        display = category;
+                        break;
+                    }
+                }
+                if (!display.isEmpty()) {
+                    displayNames.insert(key, display);
+                }
+            }
+        }
+    }
+
+    int row = 0;
+    for (const QString &key : orderedKeys) {
+        const bool isUncategorized = (key == kFilterUncategorizedKey);
+        const QList<SoftwareEntry> categoryEntries = groupedEntries.value(key);
+        const bool hasEntries = !categoryEntries.isEmpty();
+
+        if (filterKey == kFilterAllKey && isUncategorized && !hasEntries) {
             continue;
         }
 
-        const int row = index / columns;
-        const int col = index % columns;
-        ui->gridLayout->addWidget(frame, row, col);
-        ++index;
+        const QString headerText = displayNames.value(
+            key,
+            isUncategorized ? tr("Sem categoria") : key);
+        QWidget *header = createCategoryHeader(headerText, key);
+        if (header) {
+            ui->gridLayout->addWidget(header, row, 0, 1, columns);
+            ++row;
+        }
+
+        if (isCategoryCollapsed(key)) {
+            continue;
+        }
+
+        int col = 0;
+        for (const SoftwareEntry &entry : categoryEntries) {
+            QFrame *frame = createSoftwareCard(entry, baseDirPath);
+            if (!frame) {
+                continue;
+            }
+
+            ui->gridLayout->addWidget(frame, row, col);
+            ++col;
+            if (col >= columns) {
+                col = 0;
+                ++row;
+            }
+        }
+
+        if (col != 0) {
+            ++row;
+        }
     }
 
     configureGridColumns(columns);

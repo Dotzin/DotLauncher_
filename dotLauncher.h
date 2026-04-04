@@ -1,6 +1,7 @@
 #ifndef DOTLAUNCHER_H
 #define DOTLAUNCHER_H
 
+#include <QHash>
 #include <QIcon>
 #include <QList>
 #include <QMainWindow>
@@ -15,6 +16,7 @@ QT_END_NAMESPACE
 
 class QLayout;
 class QFrame;
+class QWidget;
 
 class MainWindow : public QMainWindow
 {
@@ -58,6 +60,9 @@ private:
     QString selectedCategoryFilterKey() const;
     void updateCategoryFilterCombo(const QStringList &categories);
     bool removeSoftwareEntry(const SoftwareEntry &entry, QString *errorMessage = nullptr);
+    bool updateSoftwareEntryCategory(const SoftwareEntry &entry,
+                                     const QString &category,
+                                     QString *errorMessage = nullptr);
     QString dataDirectory() const;
     QString jsonFilePath() const;
     QString iconsDirectoryPath() const;
@@ -66,6 +71,10 @@ private:
     QString resolveIconPath(const QString &iconValue, const QString &baseDirPath) const;
     bool deleteIconIfLocal(const SoftwareEntry &entry, const QString &baseDirPath, QString *errorMessage = nullptr) const;
     QFrame *createSoftwareCard(const SoftwareEntry &entry, const QString &baseDirPath);
+    QWidget *createCategoryHeader(const QString &title, const QString &key);
+    void openEditCategoryDialog(const SoftwareEntry &entry);
+    bool isCategoryCollapsed(const QString &key) const;
+    void setCategoryCollapsed(const QString &key, bool collapsed);
     void setupCardSizeControls();
     void handleCardSizeChanged(int value);
     int cardWidth() const;
@@ -78,6 +87,7 @@ private:
     void clearLayout(QLayout *layout);
 
     int m_cardWidth = 140;
+    QHash<QString, bool> m_collapsedCategories;
     Ui::dotLauncher *ui;
 };
 #endif // DOTLAUNCHER_H
