@@ -94,6 +94,10 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
+    if (ui->gridLayout) {
+        ui->gridLayout->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    }
+
     setupCardSizeControls();
 
     if (ui->manageCategoriesButton) {
