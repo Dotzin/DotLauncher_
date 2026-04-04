@@ -1,6 +1,7 @@
 #ifndef DOTLAUNCHER_H
 #define DOTLAUNCHER_H
 
+#include <QHash>
 #include <QIcon>
 #include <QList>
 #include <QMainWindow>
@@ -67,7 +68,10 @@ private:
     QString resolveIconPath(const QString &iconValue, const QString &baseDirPath) const;
     bool deleteIconIfLocal(const SoftwareEntry &entry, const QString &baseDirPath, QString *errorMessage = nullptr) const;
     QFrame *createSoftwareCard(const SoftwareEntry &entry, const QString &baseDirPath);
-    QWidget *createCategoryHeader(const QString &title);
+    QWidget *createCategoryHeader(const QString &title, const QString &key);
+    void openEditCategoryDialog(const SoftwareEntry &entry);
+    bool isCategoryCollapsed(const QString &key) const;
+    void setCategoryCollapsed(const QString &key, bool collapsed);
     void setupCardSizeControls();
     void handleCardSizeChanged(int value);
     int cardWidth() const;
@@ -80,6 +84,7 @@ private:
     void clearLayout(QLayout *layout);
 
     int m_cardWidth = 140;
+    QHash<QString, bool> m_collapsedCategories;
     Ui::dotLauncher *ui;
 };
 #endif // DOTLAUNCHER_H

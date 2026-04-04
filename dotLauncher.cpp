@@ -707,6 +707,28 @@ QString MainWindow::normalizeCategory(const QString &name) const
     return name.trimmed();
 }
 
+bool MainWindow::isCategoryCollapsed(const QString &key) const
+{
+    const QString normalized = normalizeCategory(key).toLower();
+    if (normalized.isEmpty()) {
+        return false;
+    }
+    return m_collapsedCategories.value(normalized, false);
+}
+
+void MainWindow::setCategoryCollapsed(const QString &key, bool collapsed)
+{
+    const QString normalized = normalizeCategory(key).toLower();
+    if (normalized.isEmpty()) {
+        return;
+    }
+    if (collapsed) {
+        m_collapsedCategories.insert(normalized, true);
+    } else {
+        m_collapsedCategories.remove(normalized);
+    }
+}
+
 QString MainWindow::selectedCategoryFilterKey() const
 {
     if (!ui || !ui->categoryFilterCombo) {
