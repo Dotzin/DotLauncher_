@@ -1187,7 +1187,77 @@ QFrame *MainWindow::createSoftwareCard(const SoftwareEntry &entry, const QString
     return frame;
 }
 
-QWidget *MainWindow::createCategoryHeader(const QString &title)
+void MainWindow::openEditCategoryDialog(const SoftwareEntry &entry)
+{
+    QStringList categories;
+    QString errorMessage;
+    if (!readSoftwareEntries(nullptr, &categories, &errorMessage)) {
+        if (errorMessage.isEmpty()) {
+            errorMessage = tr("Nao foi possivel carregar as categorias.");
+        }
+        QMessageBox::warning(this, tr("Categorias"), errorMessage);
+        return;
+    }
+
+    QStringList available = normalizeCategories(categories);
+    const QString currentCategory = normalizeCategory(entry.category);
+    if (!currentCategory.isEmpty()
+        && !containsCategory(available, currentCategory, Qt::CaseInsensitive)) {
+        available.append(currentCategory);
+    }
+    available = normalizeCategories(available);
+
+    QStringList items = available;
+    if (!containsCategory(items, tr("Sem categoria"), Qt::CaseInsensitive)) {
+        items.prepend(tr("Sem categoria"));
+    }
+
+    int currentIndex = 0;
+    for (int i = 0; i < items.size(); ++i) {
+        if (items.at(i).compare(currentCategory, Qt::CaseInsensitive) == 0) {
+            currentIndex = i;
+            break;
+        }
+    }
+
+    bool ok = false;
+    QString selected = QInputDialog::getItem(
+        this,
+        tr("Editar categoria"),
+        tr("Categoria:"),
+        items,
+        currentIndex,
+        true,
+        &ok);
+    if (!ok) {
+        return;
+    }
+
+    QString normalized = normalizeCategory(selected);
+    if (normalized.compare(QStringLiteral("Sem categoria"), Qt::CaseInsensitive) == 0) {
+        normalized.clear();
+    }
+    if (!normalized.isEmpty() && isReservedCategoryName(normalized)) {
+        QMessageBox::warning(
+            this,
+            tr("Categoria invalida"),
+            tr("Escolha um nome diferente de \"Todas\" ou \"Sem categoria\"."));
+        return;
+    }
+
+    QString saveError;
+    if (!updateSoftwareEntryCategory(entry, normalized, &saveError)) {
+        if (saveError.isEmpty()) {
+            saveError = tr("Nao foi possivel atualizar a categoria.");
+        }
+        QMessageBox::warning(this, tr("Erro ao salvar"), saveError);
+        return;
+    }
+
+    loadSoftwareEntries();
+}
+
+QWidget *MainWindow::createCategoryHeader(const QString &title, const QString &key)
 {
     if (!ui || !ui->scrollAreaWidgetContents) {
         return nullptr;
