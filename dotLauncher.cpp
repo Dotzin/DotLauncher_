@@ -815,6 +815,43 @@ bool MainWindow::removeSoftwareEntry(const SoftwareEntry &entry, QString *errorM
     return true;
 }
 
+bool MainWindow::updateSoftwareEntryCategory(const SoftwareEntry &entry,
+                                             const QString &category,
+                                             QString *errorMessage)
+{
+    QList<SoftwareEntry> entries;
+    QStringList categories;
+    if (!readSoftwareEntries(&entries, &categories, errorMessage)) {
+        return false;
+    }
+
+    bool updated = false;
+    const QString normalizedCategory = normalizeCategory(category);
+    for (SoftwareEntry &current : entries) {
+        if (current.name == entry.name
+            && current.exePath == entry.exePath
+            && current.iconPath == entry.iconPath) {
+            current.category = normalizedCategory;
+            updated = true;
+            break;
+        }
+    }
+
+    if (!updated) {
+        if (errorMessage) {
+            *errorMessage = tr("Nao foi possivel localizar o software para editar.");
+        }
+        return false;
+    }
+
+    if (!normalizedCategory.isEmpty()) {
+        categories.append(normalizedCategory);
+    }
+    categories = normalizeCategories(categories);
+
+    return writeSoftwareEntries(entries, categories, errorMessage);
+}
+
 QString MainWindow::jsonFilePath() const
 {
     const QString baseDirPath = dataDirectory();

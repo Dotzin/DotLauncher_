@@ -60,6 +60,9 @@ private:
     QString selectedCategoryFilterKey() const;
     void updateCategoryFilterCombo(const QStringList &categories);
     bool removeSoftwareEntry(const SoftwareEntry &entry, QString *errorMessage = nullptr);
+    bool updateSoftwareEntryCategory(const SoftwareEntry &entry,
+                                     const QString &category,
+                                     QString *errorMessage = nullptr);
     QString dataDirectory() const;
     QString jsonFilePath() const;
     QString iconsDirectoryPath() const;
