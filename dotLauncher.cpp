@@ -37,6 +37,7 @@
 #include <QSizePolicy>
 #include <QStandardPaths>
 #include <QStyle>
+#include <QToolButton>
 #include <QTimer>
 #include <QtMath>
 #include <QUuid>
@@ -1279,6 +1280,14 @@ QWidget *MainWindow::createCategoryHeader(const QString &title, const QString &k
     layout->setContentsMargins(0, 8, 0, 0);
     layout->setSpacing(8);
 
+    const bool collapsed = isCategoryCollapsed(key);
+
+    auto *toggleButton = new QToolButton(container);
+    toggleButton->setArrowType(collapsed ? Qt::RightArrow : Qt::DownArrow);
+    toggleButton->setAutoRaise(true);
+    toggleButton->setToolTip(collapsed ? tr("Expandir") : tr("Recolher"));
+    toggleButton->setFixedSize(QSize(18, 18));
+
     auto *label = new QLabel(title, container);
     QFont font = label->font();
     font.setBold(true);
@@ -1292,8 +1301,15 @@ QWidget *MainWindow::createCategoryHeader(const QString &title, const QString &k
     line->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     line->setFixedHeight(1);
 
+    layout->addWidget(toggleButton);
     layout->addWidget(label);
     layout->addWidget(line);
+
+    connect(toggleButton, &QToolButton::clicked, this, [this, key]() {
+        const bool nowCollapsed = isCategoryCollapsed(key);
+        setCategoryCollapsed(key, !nowCollapsed);
+        loadSoftwareEntries();
+    });
 
     return container;
 }
@@ -1423,10 +1439,14 @@ void MainWindow::loadSoftwareEntries()
         const QString headerText = displayNames.value(
             key,
             isUncategorized ? tr("Sem categoria") : key);
-        QWidget *header = createCategoryHeader(headerText);
+        QWidget *header = createCategoryHeader(headerText, key);
         if (header) {
             ui->gridLayout->addWidget(header, row, 0, 1, columns);
             ++row;
+        }
+
+        if (isCategoryCollapsed(key)) {
+            continue;
         }
 
         int col = 0;
