@@ -86,15 +86,19 @@ QIcon buildPencilIcon(const QWidget *referenceWidget)
 
     return QIcon(pixmap);
 }
-} // namespace
-
+}
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::dotLauncher)
 {
     ui->setupUi(this);
 
+    if (ui->gridLayout) {
+        ui->gridLayout->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    }
+
     setupCardSizeControls();
+
 
     if (ui->manageCategoriesButton) {
         ui->manageCategoriesButton->setIcon(buildPencilIcon(this));
