@@ -92,6 +92,381 @@ QIcon buildPencilIcon(const QWidget *referenceWidget)
 
     return QIcon(pixmap);
 }
+
+QIcon buildGearIcon(const QWidget *referenceWidget)
+{
+    QIcon icon = QIcon::fromTheme(QStringLiteral("preferences-system"));
+    if (icon.isNull()) {
+        icon = QIcon::fromTheme(QStringLiteral("settings"));
+    }
+    if (!icon.isNull()) {
+        return icon;
+    }
+
+    constexpr int kSize = 16;
+    QPixmap pixmap(kSize, kSize);
+    pixmap.fill(Qt::transparent);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+
+    const QColor color = referenceWidget
+        ? referenceWidget->palette().color(QPalette::Text)
+        : QColor(60, 60, 60);
+
+    QPen pen(color, 1.6, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+    painter.setPen(pen);
+    painter.setBrush(Qt::NoBrush);
+
+    const QPointF center(8.0, 8.0);
+    painter.drawEllipse(center, 4.5, 4.5);
+    painter.drawEllipse(center, 1.8, 1.8);
+
+    for (int i = 0; i < 8; ++i) {
+        QLineF line(center, QPointF(8.0, 1.0));
+        line.setAngle(45.0 * i);
+        QLineF tooth = line;
+        tooth.setLength(6.8);
+        QLineF base = line;
+        base.setLength(4.8);
+        painter.drawLine(base.p2(), tooth.p2());
+    }
+
+    return QIcon(pixmap);
+}
+
+struct CursorGuard {
+    CursorGuard()
+    {
+        QApplication::setOverrideCursor(Qt::WaitCursor);
+    }
+    ~CursorGuard()
+    {
+        QApplication::restoreOverrideCursor();
+    }
+};
+
+struct RegistryCandidate {
+    QString name;
+    QString exePath;
+    QString installLocation;
+    QString publisher;
+};
+
+QString expandEnvironmentVariables(const QString &value)
+{
+    const QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    QString result = value;
+    const QRegularExpression regex(QStringLiteral("%([^%]+)%"));
+    QRegularExpressionMatchIterator it = regex.globalMatch(value);
+    while (it.hasNext()) {
+        const QRegularExpressionMatch match = it.next();
+        const QString varName = match.captured(1);
+        if (env.contains(varName)) {
+            result.replace(match.captured(0), env.value(varName));
+        }
+    }
+    return result;
+}
+
+QString stripQuotes(QString value)
+{
+    value = value.trimmed();
+    if (value.startsWith('"')) {
+        const int end = value.indexOf('"', 1);
+        if (end > 0) {
+            value = value.mid(1, end - 1);
+        }
+    }
+    value = value.trimmed();
+    if (value.startsWith('"') && value.endsWith('"') && value.size() > 1) {
+        value = value.mid(1, value.size() - 2);
+    }
+    return value.trimmed();
+}
+
+QString normalizeMatchText(const QString &value)
+{
+    QString result;
+    const QString lowered = value.toLower();
+    result.reserve(lowered.size());
+    for (const QChar ch : lowered) {
+        if (ch.isLetterOrNumber()) {
+            result.append(ch);
+        }
+    }
+    return result;
+}
+
+bool isUnwantedExecutableName(const QString &baseName)
+{
+    const QString lowered = baseName.toLower();
+    const QStringList blocked = {
+        QStringLiteral("unins"),
+        QStringLiteral("uninstall"),
+        QStringLiteral("setup"),
+        QStringLiteral("update"),
+        QStringLiteral("updater"),
+        QStringLiteral("installer"),
+        QStringLiteral("helper"),
+        QStringLiteral("crash"),
+        QStringLiteral("repair")
+    };
+    for (const QString &token : blocked) {
+        if (lowered.contains(token)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int scoreExecutableMatch(const QString &baseName, const QString &displayName)
+{
+    if (baseName.isEmpty()) {
+        return 0;
+    }
+    if (displayName.isEmpty()) {
+        return 1;
+    }
+
+    const QString base = normalizeMatchText(baseName);
+    const QString display = normalizeMatchText(displayName);
+    if (base.isEmpty() || display.isEmpty()) {
+        return 1;
+    }
+    if (base == display) {
+        return 5;
+    }
+    if (display.contains(base) || base.contains(display)) {
+        return 3;
+    }
+    if (display.startsWith(base.left(qMin(base.size(), 4)))) {
+        return 2;
+    }
+    return 1;
+}
+
+QString extractExecutablePath(QString value)
+{
+    value = expandEnvironmentVariables(value);
+    value = stripQuotes(value);
+    if (value.isEmpty()) {
+        return QString();
+    }
+
+    const int exeIndex = value.indexOf(QStringLiteral(".exe"), 0, Qt::CaseInsensitive);
+    if (exeIndex >= 0) {
+        value = value.left(exeIndex + 4);
+    }
+
+    const int commaIndex = value.indexOf(',');
+    if (commaIndex > 0) {
+        value = value.left(commaIndex);
+    }
+
+    value = stripQuotes(value);
+    value = QDir::fromNativeSeparators(value.trimmed());
+
+    QFileInfo info(value);
+    if (!info.exists() || !info.isFile()) {
+        return QString();
+    }
+    if (info.suffix().compare(QStringLiteral("exe"), Qt::CaseInsensitive) != 0) {
+        return QString();
+    }
+    return info.absoluteFilePath();
+}
+
+QString cleanInstallLocation(QString value)
+{
+    value = expandEnvironmentVariables(value);
+    value = stripQuotes(value);
+    if (value.isEmpty()) {
+        return QString();
+    }
+    value = QDir::fromNativeSeparators(value);
+    QFileInfo info(value);
+    if (!info.exists() || !info.isDir()) {
+        return QString();
+    }
+    return info.absoluteFilePath();
+}
+
+QString findExecutableInInstallLocation(const QString &installLocation, const QString &displayName)
+{
+    const QString location = cleanInstallLocation(installLocation);
+    if (location.isEmpty()) {
+        return QString();
+    }
+
+    QDir dir(location);
+    QFileInfoList exeFiles = dir.entryInfoList(QStringList() << QStringLiteral("*.exe"),
+                                               QDir::Files | QDir::NoSymLinks,
+                                               QDir::Name);
+    if (exeFiles.isEmpty()) {
+        return QString();
+    }
+
+    int bestScore = -1;
+    QString bestPath;
+    for (const QFileInfo &info : exeFiles) {
+        const QString baseName = info.completeBaseName();
+        if (isUnwantedExecutableName(baseName)) {
+            continue;
+        }
+        const int score = scoreExecutableMatch(baseName, displayName);
+        if (score > bestScore) {
+            bestScore = score;
+            bestPath = info.absoluteFilePath();
+        }
+    }
+
+    if (bestPath.isEmpty()) {
+        const QFileInfo fallback = exeFiles.first();
+        return fallback.absoluteFilePath();
+    }
+
+    return bestPath;
+}
+
+bool looksLikeUpdateEntry(const QString &name, const QString &releaseType)
+{
+    const QString combined = (name + QLatin1Char(' ') + releaseType).toLower();
+    if (combined.contains(QStringLiteral("security update"))) {
+        return true;
+    }
+    if (combined.contains(QStringLiteral("update rollup"))) {
+        return true;
+    }
+    if (combined.contains(QStringLiteral("service pack"))) {
+        return true;
+    }
+    if (combined.contains(QStringLiteral("hotfix"))) {
+        return true;
+    }
+    if (releaseType.toLower().contains(QStringLiteral("update"))) {
+        return true;
+    }
+    if (name.startsWith(QStringLiteral("Update for"), Qt::CaseInsensitive)) {
+        return true;
+    }
+    if (name.startsWith(QStringLiteral("Security Update"), Qt::CaseInsensitive)) {
+        return true;
+    }
+    if (name.startsWith(QStringLiteral("Hotfix"), Qt::CaseInsensitive)) {
+        return true;
+    }
+    return false;
+}
+
+bool looksLikeGameEntry(const QString &name, const QString &installLocation, const QString &publisher)
+{
+    const QString combined = (name + QLatin1Char(' ') + installLocation + QLatin1Char(' ') + publisher).toLower();
+    const QStringList keywords = {
+        QStringLiteral("game"),
+        QStringLiteral("jogo"),
+        QStringLiteral("steam"),
+        QStringLiteral("steamapps"),
+        QStringLiteral("epic games"),
+        QStringLiteral("gog"),
+        QStringLiteral("itch"),
+        QStringLiteral("ubisoft"),
+        QStringLiteral("uplay"),
+        QStringLiteral("battle.net"),
+        QStringLiteral("blizzard"),
+        QStringLiteral("riot"),
+        QStringLiteral("origin"),
+        QStringLiteral("ea app"),
+        QStringLiteral("rockstar"),
+        QStringLiteral("minecraft"),
+        QStringLiteral("valorant"),
+        QStringLiteral("fortnite"),
+        QStringLiteral("league of legends"),
+        QStringLiteral("dota"),
+        QStringLiteral("counter-strike"),
+        QStringLiteral("call of duty")
+    };
+
+    for (const QString &keyword : keywords) {
+        if (combined.contains(keyword)) {
+            return true;
+        }
+    }
+
+    if (combined.contains(QStringLiteral("\\games\\")) || combined.contains(QStringLiteral("/games/"))) {
+        return true;
+    }
+
+    return false;
+}
+
+QList<RegistryCandidate> readRegistryCandidates(const QString &registryPath, int *skippedNoExe)
+{
+    QList<RegistryCandidate> result;
+    QSettings settings(registryPath, QSettings::NativeFormat);
+    const QStringList groups = settings.childGroups();
+    for (const QString &group : groups) {
+        settings.beginGroup(group);
+
+        const QString name = settings.value(QStringLiteral("DisplayName")).toString().trimmed();
+        if (name.isEmpty()) {
+            settings.endGroup();
+            continue;
+        }
+
+        const int systemComponent = settings.value(QStringLiteral("SystemComponent")).toInt();
+        const QString releaseType = settings.value(QStringLiteral("ReleaseType")).toString().trimmed();
+        if (systemComponent == 1 || looksLikeUpdateEntry(name, releaseType)) {
+            settings.endGroup();
+            continue;
+        }
+
+        const QString displayIcon = settings.value(QStringLiteral("DisplayIcon")).toString();
+        const QString installLocation = settings.value(QStringLiteral("InstallLocation")).toString();
+        const QString publisher = settings.value(QStringLiteral("Publisher")).toString();
+        settings.endGroup();
+
+        QString exePath = extractExecutablePath(displayIcon);
+        if (exePath.isEmpty()) {
+            exePath = findExecutableInInstallLocation(installLocation, name);
+        }
+
+        if (exePath.isEmpty()) {
+            if (skippedNoExe) {
+                *skippedNoExe += 1;
+            }
+            continue;
+        }
+
+        RegistryCandidate candidate;
+        candidate.name = name;
+        candidate.exePath = exePath;
+        candidate.installLocation = installLocation;
+        candidate.publisher = publisher;
+        result.append(candidate);
+    }
+
+    return result;
+}
+
+QList<RegistryCandidate> collectInstalledCandidates(int *skippedNoExe)
+{
+    if (skippedNoExe) {
+        *skippedNoExe = 0;
+    }
+
+    const QStringList registryRoots = {
+        QStringLiteral("HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall"),
+        QStringLiteral("HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall"),
+        QStringLiteral("HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall")
+    };
+
+    QList<RegistryCandidate> candidates;
+    for (const QString &root : registryRoots) {
+        candidates.append(readRegistryCandidates(root, skippedNoExe));
+    }
+    return candidates;
+}
 }
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
