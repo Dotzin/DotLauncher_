@@ -29,6 +29,7 @@ public:
 private slots:
     void openAddSoftwareDialog();
     void openManageCategoriesDialog();
+    void openAutoScanDialog();
     void handleCategoryFilterChanged(int index);
 
 private:
@@ -83,6 +84,7 @@ private:
     int calculateColumnCount(int cardWidth) const;
     void updateCardSizeLabel(int value);
     void configureGridColumns(int columns);
+    void scanInstalledSoftware();
     void loadSoftwareEntries();
     void clearLayout(QLayout *layout);
 
