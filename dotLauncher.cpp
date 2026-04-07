@@ -1,6 +1,7 @@
 #include "dotLauncher.h"
 #include "ui_dotLauncher.h"
 
+#include <QApplication>
 #include <QCoreApplication>
 #include <QAbstractItemView>
 #include <QComboBox>
@@ -21,20 +22,25 @@
 #include <QJsonObject>
 #include <QLabel>
 #include <QLayout>
+#include <QLineF>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMargins>
 #include <QMessageBox>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QPainter>
 #include <QPalette>
 #include <QPen>
 #include <QPixmap>
 #include <QPolygon>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QSlider>
 #include <QSize>
 #include <QSizePolicy>
+#include <QSettings>
+#include <QSet>
 #include <QStandardPaths>
 #include <QStyle>
 #include <QToolButton>
