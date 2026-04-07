@@ -853,6 +853,127 @@ void MainWindow::openManageCategoriesDialog()
     }
 }
 
+void MainWindow::openAutoScanDialog()
+{
+    const auto response = QMessageBox::question(
+        this,
+        tr("Ler softwares instalados"),
+        tr("Deseja buscar automaticamente softwares e jogos instalados no Windows e adiciona-los ao launcher?"));
+
+    if (response != QMessageBox::Yes) {
+        return;
+    }
+
+    scanInstalledSoftware();
+}
+
+void MainWindow::scanInstalledSoftware()
+{
+    CursorGuard guard;
+
+    QList<SoftwareEntry> entries;
+    QStringList categories;
+    QString errorMessage;
+    if (!readSoftwareEntries(&entries, &categories, &errorMessage)) {
+        if (errorMessage.isEmpty()) {
+            errorMessage = tr("Nao foi possivel carregar a lista de softwares.");
+        }
+        QMessageBox::warning(this, tr("Leitura automatica"), errorMessage);
+        return;
+    }
+
+    QSet<QString> existingExePaths;
+    for (const SoftwareEntry &entry : entries) {
+        const QString exePath = QDir::fromNativeSeparators(entry.exePath).toLower();
+        if (!exePath.isEmpty()) {
+            existingExePaths.insert(exePath);
+        }
+    }
+
+    int skippedNoExe = 0;
+    const QList<RegistryCandidate> candidates = collectInstalledCandidates(&skippedNoExe);
+
+    int addedCount = 0;
+    int skippedExisting = 0;
+
+    QFileIconProvider iconProvider;
+
+    for (const RegistryCandidate &candidate : candidates) {
+        const QString exePath = QDir::fromNativeSeparators(candidate.exePath);
+        if (exePath.isEmpty() || !QFileInfo::exists(exePath)) {
+            continue;
+        }
+
+        const QString pathKey = QFileInfo(exePath).absoluteFilePath().toLower();
+        if (existingExePaths.contains(pathKey)) {
+            skippedExisting += 1;
+            continue;
+        }
+
+        SoftwareEntry entry;
+        entry.name = candidate.name;
+        entry.exePath = exePath;
+        entry.category = normalizeCategory(
+            looksLikeGameEntry(candidate.name, candidate.installLocation, candidate.publisher)
+                ? tr("Jogos")
+                : tr("Softwares"));
+
+        if (!entry.category.isEmpty()) {
+            categories.append(entry.category);
+        }
+
+        QIcon icon = iconProvider.icon(QFileInfo(exePath));
+        if (icon.isNull()) {
+            icon = QIcon(exePath);
+        }
+
+        if (!icon.isNull()) {
+            QString iconPath;
+            QString iconError;
+            if (saveIconFile(icon, &iconPath, &iconError)) {
+                entry.iconPath = iconPath;
+            }
+        }
+
+        entries.append(entry);
+        existingExePaths.insert(pathKey);
+        addedCount += 1;
+    }
+
+    if (addedCount == 0) {
+        QString message = tr("Nenhum novo software ou jogo foi encontrado.");
+        if (skippedNoExe > 0) {
+            message += tr("\n%1 itens foram ignorados por falta de executavel.")
+                           .arg(skippedNoExe);
+        }
+        QMessageBox::information(this, tr("Leitura automatica"), message);
+        return;
+    }
+
+    categories = normalizeCategories(categories);
+
+    QString saveError;
+    if (!writeSoftwareEntries(entries, categories, &saveError)) {
+        if (saveError.isEmpty()) {
+            saveError = tr("Nao foi possivel salvar a lista atualizada.");
+        }
+        QMessageBox::warning(this, tr("Erro ao salvar"), saveError);
+        return;
+    }
+
+    loadSoftwareEntries();
+
+    QString summary = tr("Foram adicionados %1 itens.").arg(addedCount);
+    if (skippedExisting > 0) {
+        summary += tr("\n%1 ja estavam no launcher.").arg(skippedExisting);
+    }
+    if (skippedNoExe > 0) {
+        summary += tr("\n%1 itens foram ignorados por falta de executavel.").arg(skippedNoExe);
+    }
+
+    QMessageBox::information(this, tr("Leitura automatica concluida"), summary);
+}
+
 bool MainWindow::saveSoftwareEntry(const QString &name,
                                    const QString &exePath,
                                    const QIcon &icon,
