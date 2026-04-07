@@ -105,6 +105,12 @@ MainWindow::MainWindow(QWidget *parent)
         ui->manageCategoriesButton->setIconSize(QSize(16, 16));
         ui->manageCategoriesButton->setToolTip(tr("Editar categorias"));
     }
+    if (ui->scanInstalledButton) {
+        ui->scanInstalledButton->setIcon(buildGearIcon(this));
+        ui->scanInstalledButton->setIconSize(QSize(16, 16));
+        ui->scanInstalledButton->setToolTip(tr("Buscar softwares instalados"));
+        ui->scanInstalledButton->setFixedSize(QSize(28, 28));
+    }
 
     connect(ui->pushButton, &QPushButton::clicked, this, &MainWindow::openAddSoftwareDialog);
     if (ui->categoryFilterCombo) {
@@ -115,6 +121,9 @@ MainWindow::MainWindow(QWidget *parent)
     }
     if (ui->manageCategoriesButton) {
         connect(ui->manageCategoriesButton, &QPushButton::clicked, this, &MainWindow::openManageCategoriesDialog);
+    }
+    if (ui->scanInstalledButton) {
+        connect(ui->scanInstalledButton, &QToolButton::clicked, this, &MainWindow::openAutoScanDialog);
     }
 
     QTimer::singleShot(0, this, [this]() { loadSoftwareEntries(); });
